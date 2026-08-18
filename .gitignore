@@ -1,0 +1,107 @@
+# ==========================================
+# Credentials, Secrets & Environment Configs
+# ==========================================
+.env
+.env.*
+*.env
+*.env.local
+*.env.*.local
+!*.env.example
+!.env.example
+env.txt
+secrets/
+*.pem
+*.key
+*.cert
+
+# ==========================================
+# Python Build, Cache & Bytecode
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ==========================================
+# Virtual Environments
+# ==========================================
+.venv/
+venv/
+ENV/
+env/
+venv.bak/
+
+# ==========================================
+# Testing, Coverage & Code Analysis
+# ==========================================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+
+# ==========================================
+# Local Database & Storage Files
+# ==========================================
+# Local SQLite is test-only; Neon PostgreSQL is the single source of truth
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.sqlite3-journal
+
+# ==========================================
+# Frontend (Next.js, Node, Bundlers)
+# ==========================================
+node_modules/
+.next/
+out/
+.turbo/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.vercel/
+
+# ==========================================
+# IDEs, Editors & OS Metadata
+# ==========================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ==========================================
+# Logs & Scratch Artifacts
+# ==========================================
+*.log
+logs/
+scratch/

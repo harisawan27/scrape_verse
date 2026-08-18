@@ -1,0 +1,121 @@
+from datetime import datetime
+from typing import Any, Literal
+from zoneinfo import ZoneInfo
+
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator
+
+
+WatchStatus = Literal["active", "paused", "archived"]
+Cadence = Literal["hourly", "daily", "weekly", "custom"]
+
+
+class UserCreate(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+
+
+class UserRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    email: str
+    created_at: datetime
+
+
+class ScheduleInput(BaseModel):
+    cadence: Cadence
+    timezone: str = "UTC"
+    next_due_at: datetime
+
+    @field_validator("timezone")
+    @classmethod
+    def valid_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except Exception as exc:
+            raise ValueError("timezone must be an IANA timezone, such as Asia/Karachi") from exc
+        return value
+
+    @field_validator("next_due_at")
+    @classmethod
+    def aware_due_time(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("next_due_at must include a timezone offset")
+        return value
+
+
+class WatchCreate(BaseModel):
+    user_id: str
+    url: AnyHttpUrl
+    title: str = Field(min_length=1, max_length=255)
+    instruction: str = Field(min_length=1)
+    monitoring_spec: dict[str, Any]
+    schedule: ScheduleInput
+    status: WatchStatus = "active"
+
+
+class WatchUpdate(BaseModel):
+    url: AnyHttpUrl | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    instruction: str | None = Field(default=None, min_length=1)
+    monitoring_spec: dict[str, Any] | None = None
+    schedule: ScheduleInput | None = None
+    status: WatchStatus | None = None
+
+
+class ScheduleRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    cadence: Cadence
+    timezone: str
+    next_due_at: datetime
+    enabled: bool
+
+
+class WatchRead(BaseModel):
+    id: str
+    user_id: str
+    url: str
+    title: str
+    instruction: str
+    monitoring_spec: dict[str, Any]
+    status: WatchStatus
+    created_at: datetime
+    updated_at: datetime
+    schedule: ScheduleRead
+
+
+class SnapshotRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    run_id: str
+    watch_id: str
+    payload: dict[str, Any]
+    metadata: dict[str, Any] = Field(default_factory=dict, validation_alias="metadata_")
+    captured_at: datetime
+    extracted_at: datetime
+    created_at: datetime
+
+
+class ChangeRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    watch_id: str
+    run_id: str
+    change_type: str
+    details: dict[str, Any]
+    created_at: datetime
+
+
+class WatchRunRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    watch_id: str
+    scheduled_for: datetime
+    status: str
+    bright_data_collection_id: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    error_code: str | None = None
+    error_detail: str | None = None
+    snapshot: SnapshotRead | None = None
+    changes: list[ChangeRead] = []
+
