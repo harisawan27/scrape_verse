@@ -79,6 +79,53 @@ def get_previous_successful_snapshot(db: Session, run: WatchRun) -> Snapshot | N
     return db.scalar(statement)
 
 
+def process_semantic_events(
+    db: Session,
+    watch: Watch,
+    run: WatchRun,
+    current_payload: dict[str, Any],
+    previous_payload: dict[str, Any] | None,
+) -> list[Any]:
+    """Evaluate semantic rules and persist unique Alert records without aborting snapshot persistence."""
+    from app.models import Alert
+    from app.services.rules import RuleEvaluator
+
+    alerts: list[Alert] = []
+    try:
+        events = RuleEvaluator.evaluate(
+            watch=watch,
+            current_payload=current_payload,
+            previous_payload=previous_payload,
+            run_id=run.id,
+        )
+        for event in events:
+            existing = db.scalar(
+                select(Alert).where(
+                    Alert.watch_id == watch.id,
+                    Alert.idempotency_key == event.idempotency_key,
+                )
+            )
+            if existing is None:
+                alert = Alert(
+                    watch_id=watch.id,
+                    run_id=run.id,
+                    event_type=event.event_type,
+                    summary=event.summary,
+                    details=event.details,
+                    condition_snapshot=event.condition_snapshot,
+                    idempotency_key=event.idempotency_key,
+                    status="open",
+                )
+                db.add(alert)
+                alerts.append(alert)
+    except Exception as exc:
+        # Downstream alert failure must never roll back a successful snapshot
+        import logging
+        logging.getLogger(__name__).exception("Failed to process semantic events for run %s: %s", run.id, exc)
+
+    return alerts
+
+
 class MockRunExecutor:
     """Deterministic local executor; it deliberately has no Bright Data dependency."""
 
@@ -93,8 +140,13 @@ class MockRunExecutor:
         fail: bool = False,
     ) -> WatchRun:
         persisted_run = self.db.get(WatchRun, run.id)
-        if persisted_run is None or persisted_run.status != "pending":
+        if persisted_run is None:
+            raise RunNotExecutableError("run does not exist")
+        if persisted_run.status in TERMINAL_RUN_STATES:
+            return persisted_run
+        if persisted_run.status != "pending":
             raise RunNotExecutableError("only pending runs can be executed")
+
 
         persisted_run.status = "running"
         persisted_run.started_at = utc_now()
@@ -129,6 +181,14 @@ class MockRunExecutor:
                         )
                     )
 
+            process_semantic_events(
+                db=self.db,
+                watch=watch,
+                run=persisted_run,
+                current_payload=extracted_payload,
+                previous_payload=previous.payload if previous is not None else None,
+            )
+
             persisted_run.status = "succeeded"
             persisted_run.finished_at = utc_now()
             self.db.commit()
@@ -145,6 +205,7 @@ class MockRunExecutor:
 
         self.db.refresh(persisted_run)
         return persisted_run
+
 
     @staticmethod
     def _payload_for(watch: Watch) -> dict[str, Any]:
@@ -314,11 +375,20 @@ class BrightDataRunExecutor:
                                 )
                             )
 
+                    process_semantic_events(
+                        db=self.db,
+                        watch=watch,
+                        run=persisted_run,
+                        current_payload=normalized_payload,
+                        previous_payload=previous.payload if previous is not None else None,
+                    )
+
                 persisted_run.status = "succeeded"
                 persisted_run.finished_at = utc_now()
                 self.db.commit()
                 self.db.refresh(persisted_run)
                 return persisted_run
+
 
         return persisted_run
 

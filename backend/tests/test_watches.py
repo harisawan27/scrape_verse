@@ -123,5 +123,26 @@ def test_scheduler_api_endpoints(client):
     assert executed[0]["status"] in {"running", "succeeded"}
 
 
+def test_watch_events_api_endpoint(client):
+    user_id = create_user(client)
+    payload = watch_payload(user_id)
+    payload["monitoring_spec"] = {
+        "rules": [{"type": "price_below", "field": "price", "value": 2500, "currency": "PKR"}]
+    }
+    created = client.post("/v1/watches", json=payload)
+    assert created.status_code == 201
+    watch_id = created.json()["id"]
+
+    # Initial events is empty
+    events_resp = client.get(f"/v1/watches/{watch_id}/events")
+    assert events_resp.status_code == 200
+    assert events_resp.json() == []
+
+    alerts_resp = client.get(f"/v1/watches/{watch_id}/alerts")
+    assert alerts_resp.status_code == 200
+    assert alerts_resp.json() == []
+
+
+
 
 

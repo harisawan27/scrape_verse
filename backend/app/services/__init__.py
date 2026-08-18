@@ -10,6 +10,7 @@ from app.services.runs import (
     WatchNotEligibleError,
     WatchNotFoundError,
 )
+from app.services.rules import RuleEvaluator, SemanticEvent
 from app.services.scheduler import (
     AsyncSchedulerRunner,
     SchedulerService,
@@ -26,9 +27,12 @@ __all__ = [
     "RunNotExecutableError",
     "WatchNotEligibleError",
     "WatchNotFoundError",
+    "RuleEvaluator",
+    "SemanticEvent",
     "calculate_next_due_at",
     "SchedulerService",
     "AsyncSchedulerRunner",
     "WorkerService",
 ]
+
 

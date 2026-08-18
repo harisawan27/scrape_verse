@@ -282,4 +282,73 @@ def test_real_bright_data_worker_lifecycle_against_postgres(postgres_db):
     postgres_db.commit()
 
 
+def test_semantic_alerts_and_crossing_against_postgres(postgres_db):
+    """Verify deterministic semantic rule evaluation, alert creation and crossing logic on Neon PostgreSQL."""
+    from app.models import Alert
+    repo = WatchRepository(postgres_db)
+    user = repo.create_user(UserCreate(email=f"alerts-pg-{uuid.uuid4()}@example.com"))
+    watch = repo.create(
+        WatchCreate.model_validate(
+            {
+                "user_id": user.id,
+                "url": "https://example.com/product",
+                "title": "Postgres Alert Product",
+                "instruction": "Alert when price < 2500",
+                "monitoring_spec": {
+                    "field": "price",
+                    "currency": "PKR",
+                    "rules": [{"type": "price_below", "field": "price", "value": 2500, "currency": "PKR"}],
+                },
+                "schedule": {
+                    "cadence": "daily",
+                    "timezone": "UTC",
+                    "next_due_at": "2026-08-18T09:00:00+00:00",
+                },
+            }
+        )
+    )
+
+    creation = RunCreationService(postgres_db)
+    executor = MockRunExecutor(postgres_db)
+
+    # Run 1: baseline price 3000
+    run1 = creation.create(watch.id, scheduled_for=datetime(2026, 8, 18, 9, 0, tzinfo=timezone.utc))
+    executor.execute(run1, payload={"url": watch.url, "title": watch.title, "price": 3000, "currency": "PKR"})
+    alerts1 = postgres_db.scalars(select(Alert).where(Alert.watch_id == watch.id)).all()
+    assert len(alerts1) == 0
+
+    # Run 2: price drops to 2399 (crosses below 2500)
+    run2 = creation.create(watch.id, scheduled_for=datetime(2026, 8, 19, 9, 0, tzinfo=timezone.utc))
+    executor.execute(run2, payload={"url": watch.url, "title": watch.title, "price": 2399, "currency": "PKR"})
+
+    alerts2 = list(postgres_db.scalars(select(Alert).where(Alert.watch_id == watch.id)).all())
+    event_types2 = {a.event_type for a in alerts2}
+    assert "price_threshold_crossed" in event_types2
+    assert "price_decreased" in event_types2
+
+    # Verify Alert persisted fields in Neon
+    crossed_alert = next(a for a in alerts2 if a.event_type == "price_threshold_crossed")
+    assert crossed_alert.run_id == run2.id
+    assert crossed_alert.details["previous_value"] == 3000
+    assert crossed_alert.details["current_value"] == 2399
+    assert crossed_alert.details["rule_value"] == 2500
+    assert crossed_alert.idempotency_key is not None
+
+    # Run 3: price drops further to 2299 (still below 2500)
+    run3 = creation.create(watch.id, scheduled_for=datetime(2026, 8, 20, 9, 0, tzinfo=timezone.utc))
+    executor.execute(run3, payload={"url": watch.url, "title": watch.title, "price": 2299, "currency": "PKR"})
+
+    alerts3 = list(postgres_db.scalars(select(Alert).where(Alert.watch_id == watch.id)).all())
+    run3_alerts = [a for a in alerts3 if a.run_id == run3.id]
+    run3_types = {a.event_type for a in run3_alerts}
+    assert "price_decreased" in run3_types
+    assert "price_threshold_crossed" not in run3_types  # Anti-spam: no duplicate crossing
+
+    # Cleanup
+    repo.delete(watch)
+    postgres_db.delete(user)
+    postgres_db.commit()
+
+
+
 

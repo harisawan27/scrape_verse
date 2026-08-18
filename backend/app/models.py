@@ -55,6 +55,8 @@ class Watch(Base):
     user: Mapped[User] = relationship(back_populates="watches")
     schedule: Mapped["Schedule"] = relationship(back_populates="watch", cascade="all, delete-orphan", uselist=False)
     runs: Mapped[list["WatchRun"]] = relationship(back_populates="watch", cascade="all, delete-orphan")
+    alerts: Mapped[list["Alert"]] = relationship(back_populates="watch", cascade="all, delete-orphan")
+
 
 
 class Schedule(Base):
@@ -99,6 +101,7 @@ class WatchRun(Base):
     watch: Mapped[Watch] = relationship(back_populates="runs")
     snapshot: Mapped["Snapshot | None"] = relationship(back_populates="run", cascade="all, delete-orphan", uselist=False)
     changes: Mapped[list["Change"]] = relationship(back_populates="run", cascade="all, delete-orphan")
+    alerts: Mapped[list["Alert"]] = relationship(back_populates="run", cascade="all, delete-orphan")
 
 
 class Snapshot(Base):
@@ -129,9 +132,29 @@ class Change(Base):
 
 class Alert(Base):
     __tablename__ = "alerts"
+    __table_args__ = (
+        Index(
+            "uq_alerts_idempotency",
+            "watch_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+            sqlite_where=text("idempotency_key IS NOT NULL"),
+        ),
+    )
+
     id: Mapped[str] = mapped_column(UUID_TYPE, primary_key=True, default=lambda: str(uuid.uuid4()))
     watch_id: Mapped[str] = mapped_column(UUID_TYPE, ForeignKey("watches.id", ondelete="CASCADE"), nullable=False, index=True)
-    change_id: Mapped[str | None] = mapped_column(UUID_TYPE, ForeignKey("changes.id", ondelete="SET NULL"))
+    run_id: Mapped[str | None] = mapped_column(UUID_TYPE, ForeignKey("watch_runs.id", ondelete="CASCADE"), nullable=True, index=True)
+    change_id: Mapped[str | None] = mapped_column(UUID_TYPE, ForeignKey("changes.id", ondelete="SET NULL"), nullable=True)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False, default="alert", index=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    details: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="open")
-    condition_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
+    condition_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+    watch: Mapped[Watch] = relationship(back_populates="alerts")
+    run: Mapped[WatchRun | None] = relationship(back_populates="alerts")
+

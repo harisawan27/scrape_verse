@@ -105,6 +105,21 @@ class ChangeRead(BaseModel):
     created_at: datetime
 
 
+class AlertRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    watch_id: str
+    run_id: str | None = None
+    change_id: str | None = None
+    event_type: str
+    summary: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+    status: str
+    condition_snapshot: dict[str, Any] = Field(default_factory=dict)
+    idempotency_key: str | None = None
+    created_at: datetime
+
+
 class WatchRunRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -118,4 +133,6 @@ class WatchRunRead(BaseModel):
     error_detail: str | None = None
     snapshot: SnapshotRead | None = None
     changes: list[ChangeRead] = []
+    alerts: list[AlertRead] = []
+
 

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.db import check_database_connection, get_db
 from app.repositories import WatchRepository
 from app.schemas import (
+    AlertRead,
     ChangeRead,
     UserCreate,
     UserRead,
@@ -14,6 +15,7 @@ from app.schemas import (
     WatchRunRead,
     WatchUpdate,
 )
+
 from app.services.runs import (
     ActiveRunExistsError,
     MockRunExecutor,
@@ -142,6 +144,16 @@ def list_watch_changes(watch_id: str, db: Session = Depends(get_db)):
     if repository.get(watch_id) is None:
         raise HTTPException(status_code=404, detail="watch not found")
     return repository.list_changes_for_watch(watch_id)
+
+
+@app.get("/v1/watches/{watch_id}/events", response_model=list[AlertRead])
+@app.get("/v1/watches/{watch_id}/alerts", response_model=list[AlertRead])
+def list_watch_events(watch_id: str, db: Session = Depends(get_db)):
+    repository = WatchRepository(db)
+    if repository.get(watch_id) is None:
+        raise HTTPException(status_code=404, detail="watch not found")
+    return repository.list_alerts_for_watch(watch_id)
+
 
 
 @app.post("/v1/scheduler/tick", response_model=list[WatchRunRead])
