@@ -10,6 +10,8 @@ from app.integrations.bright_data.types import (
     BrightDataRateLimitError,
     CollectionProgress,
     CollectionTriggerResult,
+    RefactorProgress,
+    RefactorTriggerResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,6 +32,17 @@ class BrightDataAdapter(Protocol):
 
     def get_collection_result(self, *, collection_id: str) -> list[dict[str, Any]] | None: ...
 
+    def trigger_refactor(
+        self,
+        *,
+        collector_id: str,
+        prompt: str,
+    ) -> RefactorTriggerResult: ...
+
+    def get_refactor_status(self, *, collector_id: str) -> RefactorProgress: ...
+
+    def approve_refactor(self, *, collector_id: str) -> bool: ...
+
 
 class MockBrightDataAdapter:
     """Deterministic in-memory adapter for unit testing and local development."""
@@ -40,13 +53,17 @@ class MockBrightDataAdapter:
         preset_collection_id: str | None = None,
         preset_status: str = "ready",
         preset_data: list[dict[str, Any]] | None = None,
+        preset_refactor_status: str = "ready",
         fail_trigger: bool = False,
     ):
         self.preset_collection_id = preset_collection_id
         self.preset_status = preset_status
         self.preset_data = preset_data
+        self.preset_refactor_status = preset_refactor_status
         self.fail_trigger = fail_trigger
         self.triggered_calls: list[dict[str, Any]] = []
+        self.refactor_calls: list[dict[str, Any]] = []
+        self.approve_calls: list[str] = []
 
     def trigger_collection(
         self,
@@ -87,13 +104,45 @@ class MockBrightDataAdapter:
             return self.preset_data
         return [
             {
-                "url": "https://example.com/product",
-                "title": "Mock Product",
-                "price": 2499,
+                "url": "https://example.com/item/123",
+                "title": "Mocked Scraper Studio Product",
+                "price": 2499.0,
                 "currency": "PKR",
                 "availability": "in_stock",
+                "seller": "Mock Seller",
+                "rating": 4.7,
+                "reviews_count": 42,
             }
         ]
+
+    def trigger_refactor(
+        self,
+        *,
+        collector_id: str,
+        prompt: str,
+    ) -> RefactorTriggerResult:
+        import uuid
+        job_id = f"refactor_{uuid.uuid4().hex[:8]}"
+        self.refactor_calls.append({"collector_id": collector_id, "prompt": prompt, "job_id": job_id})
+        return RefactorTriggerResult(
+            collector_id=collector_id,
+            job_id=job_id,
+            status="in_progress",
+            raw_response={"job_id": job_id, "status": "in_progress"},
+        )
+
+    def get_refactor_status(self, *, collector_id: str) -> RefactorProgress:
+        return RefactorProgress(
+            collector_id=collector_id,
+            status=self.preset_refactor_status,
+            progress=1.0 if self.preset_refactor_status in {"ready", "pending_answer", "done", "applied"} else 0.5,
+            raw_response={"status": self.preset_refactor_status},
+        )
+
+    def approve_refactor(self, *, collector_id: str) -> bool:
+        self.approve_calls.append(collector_id)
+        self.preset_refactor_status = "applied"
+        return True
 
 
 class HttpBrightDataAdapter:
@@ -336,6 +385,68 @@ class HttpBrightDataAdapter:
                 pass
 
         return []
+
+    def trigger_refactor(
+        self,
+        *,
+        collector_id: str,
+        prompt: str,
+    ) -> RefactorTriggerResult:
+        """Trigger an AI self-healing refactor on a Scraper Studio custom collector."""
+        url = f"{self.base_url}/dca/collectors/{collector_id}/refactor_template"
+        try:
+            response = self._client.post(
+                url,
+                json={"prompt": prompt},
+                headers=self._headers(),
+            )
+            self._handle_error_response(response, "trigger_refactor")
+            data = response.json() if response.content else {}
+            job_id = data.get("job_id") or data.get("id")
+            return RefactorTriggerResult(
+                collector_id=collector_id,
+                job_id=str(job_id) if job_id else None,
+                status="in_progress",
+                raw_response=data,
+            )
+        except httpx.HTTPError as exc:
+            raise BrightDataError(f"HTTP request to refactor template failed: {exc}") from exc
+
+    def get_refactor_status(self, *, collector_id: str) -> RefactorProgress:
+        """Check progress of a self-healing refactor job on Bright Data."""
+        url = f"{self.base_url}/dca/collectors/{collector_id}/refactor_template/progress"
+        try:
+            response = self._client.get(url, headers=self._headers())
+            self._handle_error_response(response, "get_refactor_status")
+            data = response.json() if response.content else {}
+            raw_status = str(data.get("status", "in_progress")).lower()
+            progress = float(data.get("progress", 0.0) or 0.0)
+            error = data.get("error") or data.get("error_message")
+            return RefactorProgress(
+                collector_id=collector_id,
+                status=raw_status,
+                progress=progress,
+                error=str(error) if error else None,
+                raw_response=data,
+            )
+        except httpx.HTTPError as exc:
+            raise BrightDataError(f"HTTP request for refactor progress failed: {exc}") from exc
+
+    def approve_refactor(self, *, collector_id: str) -> bool:
+        """Approve and apply a draft refactored scraper into production."""
+        url = f"{self.base_url}/dca/collectors/{collector_id}/resume_automation_job"
+        try:
+            response = self._client.post(
+                url,
+                json={"approved": True},
+                headers=self._headers(),
+            )
+            self._handle_error_response(response, "approve_refactor")
+            return response.status_code in {200, 201, 202, 204}
+        except Exception:
+            return False
+
+
 
 
 

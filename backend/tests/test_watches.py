@@ -143,6 +143,19 @@ def test_watch_events_api_endpoint(client):
     assert alerts_resp.json() == []
 
 
+def test_watch_repairs_api_endpoint(client):
+    user_id = create_user(client)
+    payload = watch_payload(user_id)
+    created = client.post("/v1/watches", json=payload)
+    assert created.status_code == 201
+    watch_id = created.json()["id"]
+
+    repairs_resp = client.get(f"/v1/watches/{watch_id}/repairs")
+    assert repairs_resp.status_code == 200
+    assert repairs_resp.json() == []
+
+
+
 
 
 

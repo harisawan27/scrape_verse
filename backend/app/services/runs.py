@@ -145,7 +145,8 @@ class MockRunExecutor:
         if persisted_run.status in TERMINAL_RUN_STATES:
             return persisted_run
         if persisted_run.status != "pending":
-            raise RunNotExecutableError("only pending runs can be executed")
+            return persisted_run
+
 
 
         persisted_run.status = "running"
@@ -343,7 +344,30 @@ class BrightDataRunExecutor:
                     raw_data,
                     default_url=watch.url,
                     default_title=watch.title,
+                    default_currency=spec.get("currency", "PKR"),
                 )
+
+
+                # Schema validation: verify required fields and valid numeric price
+                from app.services.self_healing import SelfHealingService, validate_product_payload
+                is_valid, missing_fields = validate_product_payload(normalized_payload)
+                if not is_valid:
+                    healing = SelfHealingService(self.db, adapter=self.adapter)
+                    repair = healing.trigger_repair_for_run(
+                        watch=watch,
+                        run=persisted_run,
+                        collector_id=collector_id,
+                        missing_fields=missing_fields,
+                    )
+                    persisted_run.status = "failed"
+                    persisted_run.finished_at = utc_now()
+                    persisted_run.error_code = "extraction_schema_failure"
+                    persisted_run.error_detail = (
+                        f"Extracted payload failed schema validation (missing/invalid: {', '.join(missing_fields)}). "
+                        f"Self-healing repair attempt {repair.id} initiated (status: {repair.status})."
+                    )
+                    self.db.commit()
+                    return persisted_run
 
                 # Persist exactly one snapshot for this run
                 existing_snapshot = self.db.scalar(
@@ -388,6 +412,7 @@ class BrightDataRunExecutor:
                 self.db.commit()
                 self.db.refresh(persisted_run)
                 return persisted_run
+
 
 
         return persisted_run

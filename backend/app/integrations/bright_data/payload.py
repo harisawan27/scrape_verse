@@ -22,6 +22,7 @@ def map_bright_data_to_snapshot(
     *,
     default_url: str = "",
     default_title: str = "",
+    default_currency: str = "PKR",
 ) -> dict[str, Any]:
     """Convert raw Bright Data Scraper Studio output into a validated structured snapshot payload."""
     if not raw_data:
@@ -29,7 +30,7 @@ def map_bright_data_to_snapshot(
             "url": default_url,
             "title": default_title,
             "price": None,
-            "currency": None,
+            "currency": default_currency,
             "availability": "unknown",
             "extracted_fields": {},
         }
@@ -59,6 +60,7 @@ def map_bright_data_to_snapshot(
         item.get("currency")
         or item.get("currency_symbol")
         or item.get("price_currency")
+        or default_currency
     )
 
     availability = (
@@ -76,7 +78,8 @@ def map_bright_data_to_snapshot(
         "url": str(url),
         "title": str(title),
         "price": price,
-        "currency": str(currency) if currency else None,
+        "currency": str(currency) if currency else default_currency,
         "availability": str(availability),
         "extracted_fields": extra_fields,
     }
+

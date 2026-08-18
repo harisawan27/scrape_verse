@@ -8,6 +8,7 @@ from app.repositories import WatchRepository
 from app.schemas import (
     AlertRead,
     ChangeRead,
+    ScraperRepairRead,
     UserCreate,
     UserRead,
     WatchCreate,
@@ -15,6 +16,7 @@ from app.schemas import (
     WatchRunRead,
     WatchUpdate,
 )
+
 
 from app.services.runs import (
     ActiveRunExistsError,
@@ -153,6 +155,15 @@ def list_watch_events(watch_id: str, db: Session = Depends(get_db)):
     if repository.get(watch_id) is None:
         raise HTTPException(status_code=404, detail="watch not found")
     return repository.list_alerts_for_watch(watch_id)
+
+
+@app.get("/v1/watches/{watch_id}/repairs", response_model=list[ScraperRepairRead])
+def list_watch_repairs(watch_id: str, db: Session = Depends(get_db)):
+    repository = WatchRepository(db)
+    if repository.get(watch_id) is None:
+        raise HTTPException(status_code=404, detail="watch not found")
+    return repository.list_repairs_for_watch(watch_id)
+
 
 
 

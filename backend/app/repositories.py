@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Alert, Change, Schedule, Snapshot, User, Watch, WatchRun
+from app.models import Alert, Change, ScraperRepair, Schedule, Snapshot, User, Watch, WatchRun
 from app.schemas import UserCreate, WatchCreate, WatchUpdate
 
 
@@ -65,7 +65,12 @@ class WatchRepository:
     def get_run(self, run_id: str) -> WatchRun | None:
         statement = (
             select(WatchRun)
-            .options(joinedload(WatchRun.snapshot), joinedload(WatchRun.changes), joinedload(WatchRun.alerts))
+            .options(
+                joinedload(WatchRun.snapshot),
+                joinedload(WatchRun.changes),
+                joinedload(WatchRun.alerts),
+                joinedload(WatchRun.repair),
+            )
             .where(WatchRun.id == run_id)
         )
         return self.db.scalar(statement)
@@ -73,7 +78,12 @@ class WatchRepository:
     def list_runs_for_watch(self, watch_id: str, limit: int = 50) -> list[WatchRun]:
         statement = (
             select(WatchRun)
-            .options(joinedload(WatchRun.snapshot), joinedload(WatchRun.changes), joinedload(WatchRun.alerts))
+            .options(
+                joinedload(WatchRun.snapshot),
+                joinedload(WatchRun.changes),
+                joinedload(WatchRun.alerts),
+                joinedload(WatchRun.repair),
+            )
             .where(WatchRun.watch_id == watch_id)
             .order_by(WatchRun.scheduled_for.desc())
             .limit(limit)
@@ -97,6 +107,16 @@ class WatchRepository:
             .limit(limit)
         )
         return list(self.db.scalars(statement).all())
+
+    def list_repairs_for_watch(self, watch_id: str, limit: int = 50) -> list[ScraperRepair]:
+        statement = (
+            select(ScraperRepair)
+            .where(ScraperRepair.watch_id == watch_id)
+            .order_by(ScraperRepair.created_at.desc())
+            .limit(limit)
+        )
+        return list(self.db.scalars(statement).all())
+
 
 
 

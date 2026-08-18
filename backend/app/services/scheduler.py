@@ -11,9 +11,11 @@ from app.db import get_session_factory
 from app.models import Schedule, Watch, WatchRun, utc_now
 from app.services.runs import (
     ActiveRunExistsError,
+    BrightDataRunExecutor,
     MockRunExecutor,
     RunCreationService,
 )
+
 
 logger = logging.getLogger(__name__)
 
@@ -144,25 +146,27 @@ class SchedulerService:
             executed = self.executor.execute(run)
             executed_runs.append(executed)
 
-        # Poll existing running runs with Bright Data collection IDs
-        stmt = select(WatchRun).where(
-            WatchRun.status == "running",
-            WatchRun.bright_data_collection_id.is_not(None),
-        )
-        if executed_runs:
-            stmt = stmt.where(WatchRun.id.not_in([r.id for r in executed_runs]))
-        if self.db.bind and self.db.bind.dialect.name != "sqlite":
-            stmt = stmt.with_for_update(skip_locked=True)
+        # Poll existing running runs with Bright Data collection IDs only if using BrightDataRunExecutor
+        if isinstance(self.executor, BrightDataRunExecutor):
+            stmt = select(WatchRun).where(
+                WatchRun.status == "running",
+                WatchRun.bright_data_collection_id.is_not(None),
+            )
+            if executed_runs:
+                stmt = stmt.where(WatchRun.id.not_in([r.id for r in executed_runs]))
+            if self.db.bind and self.db.bind.dialect.name != "sqlite":
+                stmt = stmt.with_for_update(skip_locked=True)
 
-        running_runs = list(self.db.scalars(stmt).all())
-        for run in running_runs:
-            try:
-                polled = self.executor.execute(run)
-                executed_runs.append(polled)
-            except Exception as exc:
-                logger.error("Failed to poll running run %s: %s", run.id, exc)
+            running_runs = list(self.db.scalars(stmt).all())
+            for run in running_runs:
+                try:
+                    polled = self.executor.execute(run)
+                    executed_runs.append(polled)
+                except Exception as exc:
+                    logger.error("Failed to poll running run %s: %s", run.id, exc)
 
         return executed_runs
+
 
 
 class AsyncSchedulerRunner:

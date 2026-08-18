@@ -79,11 +79,22 @@ class WorkerService:
                 logger.error("Failed to poll/finalize running run %s: %s", run.id, exc)
         return results
 
-    def tick(self, limit: int = 50) -> dict[str, list[WatchRun]]:
-        """Worker tick cycle: polls in-flight jobs, then initiates pending runs."""
+    def process_repairs(self) -> list[Any]:
+        """Poll in-flight self-healing repairs."""
+        if hasattr(self.executor, "adapter"):
+            from app.services.self_healing import SelfHealingService
+            healing = SelfHealingService(self.db, adapter=self.executor.adapter)
+            return healing.poll_active_repairs()
+        return []
+
+    def tick(self, limit: int = 50) -> dict[str, list[Any]]:
+        """Worker tick cycle: polls in-flight jobs, processes repairs, then initiates pending runs."""
         polled = self.process_running_runs(limit=limit)
+        repairs = self.process_repairs()
         initiated = self.process_pending_runs(limit=limit)
         return {
             "running": polled,
+            "repairs": repairs,
             "pending": initiated,
         }
+

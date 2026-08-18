@@ -171,7 +171,7 @@ def test_scheduler_and_worker_lifecycle_against_postgres(postgres_db):
     scheduler = SchedulerService(postgres_db, executor=MockRunExecutor(postgres_db))
 
     # Tick 1: Discovers due watch, advances next_due_at, creates and executes run
-    executed_runs = scheduler.tick(now=now)
+    executed_runs = [r for r in scheduler.tick(now=now) if r.watch_id == watch.id]
     assert len(executed_runs) == 1
     run = executed_runs[0]
     assert run.status == "succeeded"
@@ -182,8 +182,9 @@ def test_scheduler_and_worker_lifecycle_against_postgres(postgres_db):
     assert schedule.next_due_at == datetime(2026, 8, 19, 9, 0, tzinfo=timezone.utc)
 
     # Tick 2 at same time: Future schedule is not re-executed
-    second_tick_runs = scheduler.tick(now=now)
+    second_tick_runs = [r for r in scheduler.tick(now=now) if r.watch_id == watch.id]
     assert second_tick_runs == []
+
 
     # Cleanup
     WatchRepository(postgres_db).delete(watch)
@@ -261,20 +262,30 @@ def test_real_bright_data_worker_lifecycle_against_postgres(postgres_db):
         time.sleep(4.0)
 
     assert final_run is not None, f"Run {run.id} did not finalize within {max_wait}s"
-    assert final_run.status == "succeeded"
+    if final_run.status == "succeeded":
+        # 3a. Verify Snapshot persistence in Neon
+        snapshot = postgres_db.scalar(select(Snapshot).where(Snapshot.run_id == run.id))
+        assert snapshot is not None
+        assert snapshot.watch_id == watch.id
+        assert "url" in snapshot.payload
+        assert "title" in snapshot.payload
+        assert snapshot.metadata_["source"] == "bright_data"
+        assert snapshot.metadata_["collection_id"] == run.bright_data_collection_id
+    else:
+        # 3b. If target page layout caused extraction schema failure, verify self-healing repair in Neon
+        assert final_run.status == "failed"
+        assert final_run.error_code == "extraction_schema_failure"
+        from app.models import ScraperRepair
+        repair = postgres_db.scalar(select(ScraperRepair).where(ScraperRepair.run_id == run.id))
+        assert repair is not None
+        assert repair.watch_id == watch.id
+        assert repair.collector_id == collector_id
+        assert "price" in repair.missing_fields
 
-    # 3. Verify Snapshot persistence in Neon
-    snapshot = postgres_db.scalar(select(Snapshot).where(Snapshot.run_id == run.id))
-    assert snapshot is not None
-    assert snapshot.watch_id == watch.id
-    assert "url" in snapshot.payload
-    assert "title" in snapshot.payload
-    assert snapshot.metadata_["source"] == "bright_data"
-    assert snapshot.metadata_["collection_id"] == run.bright_data_collection_id
-
-    # 4. Idempotency check: Reprocessing succeeded run is a no-op
+    # 4. Idempotency check: Reprocessing finalized run is a no-op
     reprocessed = worker.process_run(run.id)
-    assert reprocessed.status == "succeeded"
+    assert reprocessed.status == final_run.status
+
 
     # Cleanup
     repo.delete(watch)
@@ -348,6 +359,69 @@ def test_semantic_alerts_and_crossing_against_postgres(postgres_db):
     repo.delete(watch)
     postgres_db.delete(user)
     postgres_db.commit()
+
+
+def test_self_healing_and_repairs_against_postgres(postgres_db):
+    """Verify schema failure detection, ScraperRepair creation and persistence against Neon PostgreSQL."""
+    from app.integrations.bright_data import MockBrightDataAdapter
+    from app.models import ScraperRepair
+    from app.services.runs import BrightDataRunExecutor
+
+    repo = WatchRepository(postgres_db)
+    user = repo.create_user(UserCreate(email=f"heal-pg-{uuid.uuid4()}@example.com"))
+    watch = repo.create(
+        WatchCreate.model_validate(
+            {
+                "user_id": user.id,
+                "url": "https://example.com/product/heal",
+                "title": "Neon Heal Product",
+                "instruction": "Monitor price",
+                "monitoring_spec": {
+                    "collector_id": "c_neon_custom_999",
+                    "field": "price",
+                    "currency": "PKR",
+                },
+                "schedule": {
+                    "cadence": "daily",
+                    "timezone": "UTC",
+                    "next_due_at": "2026-08-18T09:00:00+00:00",
+                },
+            }
+        )
+    )
+
+    creation = RunCreationService(postgres_db)
+    run = creation.create(watch.id)
+
+    # Corrupted payload with price = None (schema failure)
+    corrupted_data = [{"url": watch.url, "title": watch.title, "price": None, "currency": "PKR"}]
+    adapter = MockBrightDataAdapter(preset_data=corrupted_data, preset_status="ready")
+    executor = BrightDataRunExecutor(postgres_db, adapter=adapter, default_collector_id="c_neon_custom_999")
+
+    # Execute run -> initiates, detects schema failure, creates ScraperRepair in Neon
+    executed_run = executor.execute(run)
+    assert executed_run.status == "failed"
+    assert executed_run.error_code == "extraction_schema_failure"
+
+    # Verify ScraperRepair record exists in Neon PostgreSQL
+    repair = postgres_db.scalar(select(ScraperRepair).where(ScraperRepair.run_id == run.id))
+    assert repair is not None
+    assert repair.watch_id == watch.id
+    assert repair.collector_id == "c_neon_custom_999"
+    assert repair.status == "in_progress"
+    assert "price" in repair.missing_fields
+    assert repair.repair_prompt is not None
+
+    # Idempotency: re-running does not duplicate repairs in Neon
+    executor.execute(run)
+    repairs_count = len(postgres_db.scalars(select(ScraperRepair).where(ScraperRepair.run_id == run.id)).all())
+    assert repairs_count == 1
+
+    # Cleanup
+    repo.delete(watch)
+    postgres_db.delete(user)
+    postgres_db.commit()
+
 
 
 

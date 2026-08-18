@@ -16,6 +16,11 @@ from app.services.scheduler import (
     SchedulerService,
     calculate_next_due_at,
 )
+from app.services.self_healing import (
+    SelfHealingService,
+    generate_repair_prompt,
+    validate_product_payload,
+)
 from app.services.worker import WorkerService
 
 __all__ = [
@@ -29,10 +34,14 @@ __all__ = [
     "WatchNotFoundError",
     "RuleEvaluator",
     "SemanticEvent",
+    "SelfHealingService",
+    "validate_product_payload",
+    "generate_repair_prompt",
     "calculate_next_due_at",
     "SchedulerService",
     "AsyncSchedulerRunner",
     "WorkerService",
 ]
+
 
 

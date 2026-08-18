@@ -51,3 +51,35 @@ class CollectionProgress:
     @property
     def is_failed(self) -> bool:
         return self.status.lower() in {"failed", "error", "canceled"}
+
+
+@dataclass(frozen=True)
+class RefactorTriggerResult:
+    """Result of triggering a self-healing refactor on a collector."""
+    collector_id: str
+    job_id: str | None = None
+    status: str = "in_progress"
+    raw_response: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RefactorProgress:
+    """Status of an in-flight scraper refactor."""
+    collector_id: str
+    status: str  # "in_progress", "pending_answer", "ready", "applied", "failed"
+    progress: float = 0.0
+    error: str | None = None
+    raw_response: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def is_ready(self) -> bool:
+        return self.status.lower() in {"ready", "pending_answer", "done"}
+
+    @property
+    def is_failed(self) -> bool:
+        return self.status.lower() in {"failed", "error"}
+
+    @property
+    def requires_approval(self) -> bool:
+        return self.status.lower() in {"pending_answer"}
+

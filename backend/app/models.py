@@ -56,6 +56,8 @@ class Watch(Base):
     schedule: Mapped["Schedule"] = relationship(back_populates="watch", cascade="all, delete-orphan", uselist=False)
     runs: Mapped[list["WatchRun"]] = relationship(back_populates="watch", cascade="all, delete-orphan")
     alerts: Mapped[list["Alert"]] = relationship(back_populates="watch", cascade="all, delete-orphan")
+    repairs: Mapped[list["ScraperRepair"]] = relationship(back_populates="watch", cascade="all, delete-orphan")
+
 
 
 
@@ -102,6 +104,7 @@ class WatchRun(Base):
     snapshot: Mapped["Snapshot | None"] = relationship(back_populates="run", cascade="all, delete-orphan", uselist=False)
     changes: Mapped[list["Change"]] = relationship(back_populates="run", cascade="all, delete-orphan")
     alerts: Mapped[list["Alert"]] = relationship(back_populates="run", cascade="all, delete-orphan")
+    repair: Mapped["ScraperRepair | None"] = relationship(back_populates="run", cascade="all, delete-orphan", uselist=False)
 
 
 class Snapshot(Base):
@@ -157,4 +160,33 @@ class Alert(Base):
 
     watch: Mapped[Watch] = relationship(back_populates="alerts")
     run: Mapped[WatchRun | None] = relationship(back_populates="alerts")
+
+
+class ScraperRepair(Base):
+    __tablename__ = "scraper_repairs"
+    __table_args__ = (
+        Index(
+            "uq_scraper_repairs_run_active",
+            "run_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending', 'in_progress', 'pending_answer', 'requires_manual_promotion')"),
+            sqlite_where=text("status IN ('pending', 'in_progress', 'pending_answer', 'requires_manual_promotion')"),
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(UUID_TYPE, primary_key=True, default=lambda: str(uuid.uuid4()))
+    watch_id: Mapped[str] = mapped_column(UUID_TYPE, ForeignKey("watches.id", ondelete="CASCADE"), nullable=False, index=True)
+    run_id: Mapped[str] = mapped_column(UUID_TYPE, ForeignKey("watch_runs.id", ondelete="CASCADE"), nullable=False, index=True)
+    collector_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    refactor_job_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    repair_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    missing_fields: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending", index=True)
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now)
+
+    watch: Mapped[Watch] = relationship(back_populates="repairs")
+    run: Mapped[WatchRun] = relationship(back_populates="repair")
+
 

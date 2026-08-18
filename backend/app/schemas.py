@@ -120,6 +120,21 @@ class AlertRead(BaseModel):
     created_at: datetime
 
 
+class ScraperRepairRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    watch_id: str
+    run_id: str
+    collector_id: str
+    refactor_job_id: str | None = None
+    repair_prompt: str
+    missing_fields: list[str] = Field(default_factory=list)
+    status: str
+    failure_reason: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class WatchRunRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -134,5 +149,7 @@ class WatchRunRead(BaseModel):
     snapshot: SnapshotRead | None = None
     changes: list[ChangeRead] = []
     alerts: list[AlertRead] = []
+    repair: ScraperRepairRead | None = None
+
 
 
