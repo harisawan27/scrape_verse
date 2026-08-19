@@ -40,6 +40,10 @@ class WatchRepository:
     def get_user(self, user_id: str) -> User | None:
         return self.db.get(User, user_id)
 
+    def get_user_by_email(self, email: str) -> User | None:
+        return self.db.scalar(select(User).where(User.email == email))
+
+
     def create(self, data: WatchCreate) -> Watch:
         watch = Watch(
             user_id=data.user_id,

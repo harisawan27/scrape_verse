@@ -75,6 +75,23 @@ def create_user(data: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=409, detail="email already exists") from exc
 
 
+@app.post("/v1/users/ensure", response_model=UserRead)
+def ensure_user(data: UserCreate, db: Session = Depends(get_db)):
+    repository = WatchRepository(db)
+    existing = repository.get_user_by_email(data.email)
+    if existing is not None:
+        return existing
+    try:
+        return repository.create_user(data)
+    except IntegrityError:
+        db.rollback()
+        existing = repository.get_user_by_email(data.email)
+        if existing is not None:
+            return existing
+        raise HTTPException(status_code=500, detail="could not ensure user")
+
+
+
 @app.post("/v1/watches", response_model=WatchRead, status_code=status.HTTP_201_CREATED)
 def create_watch(data: WatchCreate, db: Session = Depends(get_db)):
     repository = WatchRepository(db)
