@@ -480,6 +480,134 @@ def test_watch_plan_creation_and_execution_against_postgres(postgres_db):
     postgres_db.commit()
 
 
+def test_frontend_read_models_and_activity_feed_against_postgres(postgres_db):
+    """Verify WatchSummaryRead, WatchOverviewRead, and ActivityEventRead against real Neon PostgreSQL."""
+    from app.models import Alert
+    from app.services.runs import MockRunExecutor, RunCreationService
+
+
+    repo = WatchRepository(postgres_db)
+    user = repo.create_user(UserCreate(email=f"frontend-pg-{uuid.uuid4()}@example.com"))
+
+    # Create Watch 1
+    w1_payload = {
+        "user_id": user.id,
+        "url": "https://www.daraz.pk/products/ergonomic-chair-i101.html",
+        "title": "Neon Ergonomic Chair",
+        "instruction": "Track price below 2500",
+        "monitoring_spec": {
+            "vertical": "product",
+            "currency": "PKR",
+            "cadence_minutes": 30,
+            "collector_id": "c_msz0zrtw29tjzhzakl",
+            "rules": [{"type": "price_below", "field": "price", "value": 2500, "currency": "PKR"}],
+        },
+        "schedule": {
+            "cadence": "custom",
+            "timezone": "Asia/Karachi",
+            "next_due_at": "2026-08-20T10:00:00+05:00",
+        },
+        "status": "active",
+    }
+    watch1 = repo.create(WatchCreate(**w1_payload))
+
+    # Create Watch 2
+    w2_payload = {
+        "user_id": user.id,
+        "url": "https://www.daraz.pk/products/wireless-mouse-i102.html",
+        "title": "Neon Wireless Mouse",
+        "instruction": "Track price below 1000",
+        "monitoring_spec": {
+            "vertical": "product",
+            "currency": "PKR",
+            "cadence_minutes": 60,
+            "collector_id": "c_msz0zrtw29tjzhzakl",
+            "rules": [{"type": "price_below", "field": "price", "value": 1000, "currency": "PKR"}],
+        },
+        "schedule": {
+            "cadence": "hourly",
+            "timezone": "Asia/Karachi",
+            "next_due_at": "2026-08-20T11:00:00+05:00",
+        },
+        "status": "active",
+    }
+    watch2 = repo.create(WatchCreate(**w2_payload))
+
+    creation = RunCreationService(postgres_db)
+    executor = MockRunExecutor(postgres_db)
+
+    # Execute Run 1 for Watch 1 (price: 2199.0 PKR)
+    run1 = creation.create(watch1.id, scheduled_for=datetime(2026, 8, 19, 10, 0, tzinfo=timezone.utc))
+    executor.execute(
+        run1,
+        payload={"url": watch1.url, "title": watch1.title, "price": 2199.0, "currency": "PKR", "availability": "in_stock"},
+    )
+
+    # Execute Run 2 for Watch 2 (price: 850.0 PKR)
+    run2 = creation.create(watch2.id, scheduled_for=datetime(2026, 8, 19, 11, 0, tzinfo=timezone.utc))
+    executor.execute(
+        run2,
+        payload={"url": watch2.url, "title": watch2.title, "price": 850.0, "currency": "PKR", "availability": "in_stock"},
+    )
+
+    # Add cross-watch semantic alerts
+    alert1 = Alert(
+        watch_id=watch1.id,
+        run_id=run1.id,
+        event_type="price_threshold_crossed",
+        summary="Neon Ergonomic Chair price dropped to Rs 2,199",
+        details={"previous_value": 3000, "current_value": 2199},
+        status="open",
+        created_at=datetime(2026, 8, 19, 10, 5, tzinfo=timezone.utc),
+    )
+    alert2 = Alert(
+        watch_id=watch2.id,
+        run_id=run2.id,
+        event_type="price_threshold_crossed",
+        summary="Neon Wireless Mouse price dropped to Rs 850",
+        details={"previous_value": 1200, "current_value": 850},
+        status="open",
+        created_at=datetime(2026, 8, 19, 11, 5, tzinfo=timezone.utc),
+    )
+    postgres_db.add_all([alert1, alert2])
+    postgres_db.commit()
+
+    # 1. Test Summary Cards
+    summaries = repo.list_summaries_for_user(user.id)
+    assert len(summaries) == 2
+    w1_summary = next(s for s in summaries if s.id == watch1.id)
+    assert w1_summary.domain == "daraz.pk"
+    assert w1_summary.health_status == "healthy"
+    assert w1_summary.cadence_minutes == 30
+    assert w1_summary.latest_value is not None
+    assert w1_summary.latest_value.price == 2199.0
+
+    # 2. Test Watch Overview
+    overview = repo.get_watch_overview(watch1.id)
+    assert overview is not None
+    assert overview.watch.id == watch1.id
+    assert overview.health_status == "healthy"
+    assert overview.latest_snapshot is not None
+    assert overview.latest_snapshot.payload["price"] == 2199.0
+    assert overview.stats.total_runs >= 1
+    assert overview.stats.successful_runs >= 1
+
+    # 3. Test Cross-Watch Activity Feed
+    activity = repo.list_activity_for_user(user.id)
+    assert len(activity) >= 2
+    watch_titles = [a.watch_title for a in activity]
+    assert "Neon Ergonomic Chair" in watch_titles
+    assert "Neon Wireless Mouse" in watch_titles
+
+    # Cleanup
+    repo.delete(watch1)
+    repo.delete(watch2)
+    postgres_db.delete(user)
+    postgres_db.commit()
+
+
+
+
 
 
 

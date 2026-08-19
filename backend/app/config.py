@@ -39,7 +39,19 @@ class Settings(BaseSettings):
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
     default_timezone: str = "Asia/Karachi"
 
+    # CORS Configuration for Next.js / Vercel frontend
+    cors_origins: list[str] = Field(
+        default=[
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:3001",
+            "http://127.0.0.1:3001",
+        ],
+        validation_alias=AliasChoices("cors_origins", "cors_origin"),
+    )
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
 
 
 

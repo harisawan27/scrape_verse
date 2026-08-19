@@ -6,6 +6,7 @@ from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator
 
 
 WatchStatus = Literal["active", "paused", "archived"]
+HealthStatus = Literal["healthy", "running", "attention", "repairing", "failed", "paused"]
 Cadence = Literal["hourly", "daily", "weekly", "custom"]
 
 
@@ -42,6 +43,24 @@ class ScheduleInput(BaseModel):
         return value
 
 
+class ScheduleUpdateInput(BaseModel):
+    cadence: Cadence | None = None
+    timezone: str | None = None
+    next_due_at: datetime | None = None
+    enabled: bool | None = None
+
+    @field_validator("timezone")
+    @classmethod
+    def valid_timezone(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            ZoneInfo(value)
+        except Exception as exc:
+            raise ValueError("timezone must be an IANA timezone, such as Asia/Karachi") from exc
+        return value
+
+
 class WatchCreate(BaseModel):
     user_id: str
     url: AnyHttpUrl
@@ -57,8 +76,9 @@ class WatchUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
     instruction: str | None = Field(default=None, min_length=1)
     monitoring_spec: dict[str, Any] | None = None
-    schedule: ScheduleInput | None = None
+    schedule: ScheduleUpdateInput | ScheduleInput | None = None
     status: WatchStatus | None = None
+
 
 
 class ScheduleRead(BaseModel):
@@ -71,6 +91,7 @@ class ScheduleRead(BaseModel):
 
 
 class WatchRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     id: str
     user_id: str
     url: str
@@ -81,6 +102,7 @@ class WatchRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     schedule: ScheduleRead
+
 
 
 class SnapshotRead(BaseModel):
@@ -196,6 +218,71 @@ class WatchPlanPreviewResponse(BaseModel):
 class WatchCreateFromPlanRequest(BaseModel):
     user_id: str
     plan: WatchPlan
+
+
+# --- Frontend Control Surface & Read Models ---
+
+class ProductCurrentValue(BaseModel):
+    price: float | None = None
+    currency: str | None = None
+    availability: str | None = None
+    title: str | None = None
+    seller: str | None = None
+    rating: float | None = None
+    reviews_count: int | None = None
+    extracted_at: datetime | None = None
+
+
+class WatchSummaryRead(BaseModel):
+    id: str
+    user_id: str
+    url: str
+    domain: str
+    title: str
+    instruction: str
+    status: WatchStatus
+    health_status: HealthStatus
+    cadence: Cadence
+    cadence_minutes: int
+    timezone: str
+    next_due_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+    latest_run_at: datetime | None = None
+    latest_successful_run_at: datetime | None = None
+    latest_value: ProductCurrentValue | None = None
+    latest_event: AlertRead | None = None
+    active_repair_id: str | None = None
+
+
+class WatchOverviewStats(BaseModel):
+    total_runs: int = 0
+    successful_runs: int = 0
+    failed_runs: int = 0
+    total_events: int = 0
+
+
+class WatchOverviewRead(BaseModel):
+    watch: WatchRead
+    health_status: HealthStatus
+    latest_snapshot: SnapshotRead | None = None
+    latest_run: WatchRunRead | None = None
+    latest_event: AlertRead | None = None
+    active_repair: ScraperRepairRead | None = None
+    latest_value: ProductCurrentValue | None = None
+    stats: WatchOverviewStats = Field(default_factory=WatchOverviewStats)
+
+
+class ActivityEventRead(BaseModel):
+    id: str
+    watch_id: str
+    watch_title: str
+    watch_url: str
+    event_type: str
+    summary: str | None = None
+    created_at: datetime
+    details: dict[str, Any] = Field(default_factory=dict)
+
 
 
 

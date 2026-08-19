@@ -3,9 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db import check_database_connection, get_db
 from app.repositories import WatchRepository
 from app.schemas import (
+    ActivityEventRead,
     AlertRead,
     ChangeRead,
     ScraperRepairRead,
@@ -13,14 +15,15 @@ from app.schemas import (
     UserRead,
     WatchCreate,
     WatchCreateFromPlanRequest,
+    WatchOverviewRead,
     WatchPlanPreviewRequest,
     WatchPlanPreviewResponse,
     WatchRead,
     WatchRunRead,
+    WatchSummaryRead,
     WatchUpdate,
 )
 from app.services.planner import NaturalLanguageWatchPlanner
-
 
 
 from app.services.runs import (
@@ -31,15 +34,19 @@ from app.services.runs import (
     WatchNotFoundError,
 )
 
+settings = get_settings()
+
 app = FastAPI(title="Web Radar API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 
 @app.get("/health")
@@ -76,9 +83,9 @@ def create_watch(data: WatchCreate, db: Session = Depends(get_db)):
     return repository.create(data)
 
 
-@app.get("/v1/watches", response_model=list[WatchRead])
+@app.get("/v1/watches", response_model=list[WatchSummaryRead])
 def list_watches(user_id: str, db: Session = Depends(get_db)):
-    return WatchRepository(db).list_for_user(user_id)
+    return WatchRepository(db).list_summaries_for_user(user_id)
 
 
 @app.get("/v1/watches/{watch_id}", response_model=WatchRead)
@@ -87,6 +94,20 @@ def get_watch(watch_id: str, db: Session = Depends(get_db)):
     if watch is None:
         raise HTTPException(status_code=404, detail="watch not found")
     return watch
+
+
+@app.get("/v1/watches/{watch_id}/overview", response_model=WatchOverviewRead)
+def get_watch_overview(watch_id: str, db: Session = Depends(get_db)):
+    overview = WatchRepository(db).get_watch_overview(watch_id)
+    if overview is None:
+        raise HTTPException(status_code=404, detail="watch not found")
+    return overview
+
+
+@app.get("/v1/activity", response_model=list[ActivityEventRead])
+def list_activity(user_id: str, limit: int = 50, db: Session = Depends(get_db)):
+    return WatchRepository(db).list_activity_for_user(user_id, limit=limit)
+
 
 
 @app.patch("/v1/watches/{watch_id}", response_model=WatchRead)
