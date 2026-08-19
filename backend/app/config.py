@@ -25,7 +25,22 @@ class Settings(BaseSettings):
     bright_data_poll_timeout_seconds: float = 60.0
     bright_data_poll_interval_seconds: float = 2.0
 
+    # Gemini LLM Planner Configuration
+    gemini_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("gemini_api_key", "google_api_key", "gemini_key", "gemeni_key", "gemeni_api_key"),
+    )
+    gemini_model_name: str = Field(
+        default="gemini-2.5-flash",
+        validation_alias=AliasChoices("gemini_model_name", "gemini_model", "model_name"),
+    )
+
+
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+    default_timezone: str = "Asia/Karachi"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
 
 
 

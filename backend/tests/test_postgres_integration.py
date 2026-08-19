@@ -423,6 +423,64 @@ def test_self_healing_and_repairs_against_postgres(postgres_db):
     postgres_db.commit()
 
 
+def test_watch_plan_creation_and_execution_against_postgres(postgres_db):
+    """Verify natural-language plan creation and full Watch execution against real Neon PostgreSQL."""
+    from app.integrations.llm import MockLLMPlannerClient
+    from app.models import Alert, Snapshot
+    from app.services.planner import NaturalLanguageWatchPlanner
+    from app.services.runs import MockRunExecutor, RunCreationService
+
+    repo = WatchRepository(postgres_db)
+    user = repo.create_user(UserCreate(email=f"plan-pg-{uuid.uuid4()}@example.com"))
+
+    planner = NaturalLanguageWatchPlanner(llm_client=MockLLMPlannerClient())
+    preview = planner.preview_plan(
+        message="Watch this Daraz chair every 30 minutes and alert me when price drops below Rs 2,500.",
+        url="https://www.daraz.pk/products/office-chair-i998811.html",
+    )
+    assert preview.status == "ready"
+    assert preview.plan is not None
+
+    # Persist Watch into Neon PostgreSQL via planner.create_watch_from_plan
+    watch = planner.create_watch_from_plan(
+        db=postgres_db,
+        user_id=user.id,
+        plan=preview.plan,
+    )
+    assert watch.id is not None
+    assert watch.user_id == user.id
+    assert watch.url == "https://www.daraz.pk/products/office-chair-i998811.html"
+    assert watch.status == "active"
+    assert watch.schedule.cadence == "custom"
+    assert watch.monitoring_spec["collector_id"] == "c_msz0zrtw29tjzhzakl"
+    assert len(watch.monitoring_spec["rules"]) == 1
+
+    # Execute Run 1 against Neon PostgreSQL (baseline: Rs 3000)
+    creation = RunCreationService(postgres_db)
+    executor = MockRunExecutor(postgres_db)
+    run1 = creation.create(watch.id, scheduled_for=datetime(2026, 8, 18, 9, 0, tzinfo=timezone.utc))
+    executor.execute(run1, payload={"url": watch.url, "title": watch.title, "price": 3000, "currency": "PKR"})
+
+    snapshot1 = postgres_db.scalar(select(Snapshot).where(Snapshot.run_id == run1.id))
+    assert snapshot1 is not None
+    assert snapshot1.payload["price"] == 3000
+
+    # Execute Run 2 against Neon PostgreSQL (drop to Rs 2399 -> threshold crossed)
+    run2 = creation.create(watch.id, scheduled_for=datetime(2026, 8, 18, 9, 30, tzinfo=timezone.utc))
+    executor.execute(run2, payload={"url": watch.url, "title": watch.title, "price": 2399, "currency": "PKR"})
+
+    alerts = list(postgres_db.scalars(select(Alert).where(Alert.watch_id == watch.id)).all())
+    crossed = [a for a in alerts if a.event_type == "price_threshold_crossed"]
+    assert len(crossed) == 1
+    assert crossed[0].details["current_value"] == 2399
+
+    # Cleanup
+    repo.delete(watch)
+    postgres_db.delete(user)
+    postgres_db.commit()
+
+
+
 
 
 

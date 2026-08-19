@@ -152,4 +152,51 @@ class WatchRunRead(BaseModel):
     repair: ScraperRepairRead | None = None
 
 
+# --- Natural-Language Watch Planner Schemas ---
+
+class WatchPlanRule(BaseModel):
+    type: Literal["price_below", "price_above", "price_drop", "back_in_stock", "availability_changed"]
+    field: str = "price"
+    value: float | None = None
+    currency: str = "PKR"
+
+
+class WatchPlanSchedule(BaseModel):
+    cadence: Cadence = "hourly"
+    cadence_minutes: int = 60
+    timezone: str = "Asia/Karachi"
+
+
+class WatchPlan(BaseModel):
+    url: str
+    title: str
+    vertical: str = "product"
+    intent: str
+    schedule: WatchPlanSchedule
+    monitoring_spec: dict[str, Any]
+    collector_id: str
+    confidence: float = 1.0
+    assumptions: list[str] = Field(default_factory=list)
+
+
+class WatchPlanPreviewRequest(BaseModel):
+    message: str = Field(min_length=1)
+    url: str | None = None
+    timezone: str | None = None
+
+
+class WatchPlanPreviewResponse(BaseModel):
+    status: Literal["ready", "needs_clarification", "unsupported"]
+    plan: WatchPlan | None = None
+    missing: list[str] = Field(default_factory=list)
+    clarification_prompt: str | None = None
+    message: str | None = None
+
+
+class WatchCreateFromPlanRequest(BaseModel):
+    user_id: str
+    plan: WatchPlan
+
+
+
 

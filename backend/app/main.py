@@ -12,10 +12,15 @@ from app.schemas import (
     UserCreate,
     UserRead,
     WatchCreate,
+    WatchCreateFromPlanRequest,
+    WatchPlanPreviewRequest,
+    WatchPlanPreviewResponse,
     WatchRead,
     WatchRunRead,
     WatchUpdate,
 )
+from app.services.planner import NaturalLanguageWatchPlanner
+
 
 
 from app.services.runs import (
@@ -188,5 +193,32 @@ def get_scheduler_status():
         "poll_interval_seconds": settings.scheduler_poll_interval_seconds,
         "scheduler_enabled": settings.scheduler_enabled,
     }
+
+
+@app.post("/v1/watch-plans/preview", response_model=WatchPlanPreviewResponse)
+def preview_watch_plan(req: WatchPlanPreviewRequest):
+    """Translate natural language instruction into a validated WatchPlan preview without persisting."""
+    planner = NaturalLanguageWatchPlanner()
+    return planner.preview_plan(
+        message=req.message,
+        url=req.url,
+        timezone=req.timezone,
+    )
+
+
+@app.post("/v1/watches/from-plan", response_model=WatchRead, status_code=status.HTTP_201_CREATED)
+def create_watch_from_plan(req: WatchCreateFromPlanRequest, db: Session = Depends(get_db)):
+    """Create a persistent Watch from a validated WatchPlan."""
+    planner = NaturalLanguageWatchPlanner()
+    try:
+        watch = planner.create_watch_from_plan(
+            db=db,
+            user_id=req.user_id,
+            plan=req.plan,
+        )
+        return watch
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
 
 
