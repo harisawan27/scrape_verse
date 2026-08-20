@@ -89,17 +89,21 @@ Migrations applied:
 2. Choose **Docker** as the Space SDK (Blank template).
 3. Set Space Name (e.g. `web-radar-api`).
 
-#### 2. Configure Hugging Face Trusted Publisher (OIDC)
-In your Space **Settings** $\rightarrow$ **Trusted Publishers**:
-- **Provider**: `GitHub Actions`
-- **Repository**: `<your-github-username>/<your-repo-name>` (e.g. `harisawan27/scrape_verse`)
-- **Branch**: `main`
-- **Workflow**: `deploy-backend.yml`
+#### 2. Configure GitHub Secrets & Variables
+
+In your GitHub Repo **Settings** $\rightarrow$ **Secrets and variables** $\rightarrow$ **Actions**:
+
+1. **Repository Secret** (under **Secrets** tab):
+   - **Name**: `HF_TOKEN`
+   - **Value**: Create a **Write** token on [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) and paste it here.
+2. **Repository Variable** (under **Variables** tab):
+   - **Name**: `HF_SPACE`
+   - **Value**: `<your-hf-username>/<your-space-name>` (e.g. `harisawan27/web-radar-api`)
 
 #### 3. Configure Space Secrets & Variables
-In your Space **Settings** $\rightarrow$ **Variables and Secrets**:
+In your Hugging Face Space **Settings** $\rightarrow$ **Variables and secrets**:
 - **Secrets**:
-  - `DATABASE_URL`: `postgresql+psycopg://...neon.tech/neondb?sslmode=require`
+  - `DATABASE_URL`: `postgresql+psycopg://user:password@ep-xyz.aws.neon.tech/neondb?sslmode=require`
   - `BRIGHT_DATA_API_KEY`: Your Bright Data API Key
   - `BRIGHT_DATA_COLLECTOR_ID`: `c_msz0zrtw29tjzhzakl`
   - `GEMINI_API_KEY`: Your Google AI Studio Gemini API Key
@@ -107,11 +111,8 @@ In your Space **Settings** $\rightarrow$ **Variables and Secrets**:
   - `CORS_ORIGINS`: `http://localhost:3000,https://your-frontend.vercel.app`
   - `SCHEDULER_ENABLED`: `true`
 
-#### 4. Configure GitHub Repository Variable
-In your GitHub Repo **Settings** $\rightarrow$ **Secrets and variables** $\rightarrow$ **Actions** $\rightarrow$ **Variables**:
-- `HF_SPACE`: `<your-hf-username>/<your-space-name>` (e.g. `harisawan27/web-radar-api`)
-
 Every push to `main` affecting `backend/`, `database/`, or `Dockerfile` will automatically sync and build your backend on Hugging Face Spaces via `.github/workflows/deploy-backend.yml`!
+
 
 
 ### Option B: Render / Railway / VM
