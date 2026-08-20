@@ -1,4 +1,15 @@
+---
+title: Web Radar API
+emoji: 📡
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # 🌐 Web Radar (ScrapeVerse)
+
 
 > **Autonomous, Persistent Web Monitoring & Intelligence Engine**  
 > *Engineered with FastAPI, Neon Serverless PostgreSQL, and Bright Data Scraper Studio.*

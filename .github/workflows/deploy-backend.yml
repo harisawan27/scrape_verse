@@ -8,7 +8,9 @@ on:
       - 'backend/**'
       - 'database/**'
       - 'Dockerfile'
+      - 'README.md'
       - '.github/workflows/deploy-backend.yml'
+
   workflow_dispatch:
 
 permissions:
