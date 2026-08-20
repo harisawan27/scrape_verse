@@ -3,8 +3,6 @@ from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db import get_session_factory
-from app.main import app
 from app.models import Alert, ScraperRepair, Snapshot, Watch, WatchRun
 from app.repositories import WatchRepository
 from app.schemas import UserCreate, WatchCreate, WatchUpdate
@@ -15,10 +13,6 @@ from app.services.overview import (
 )
 from app.services.runs import MockRunExecutor, RunCreationService
 
-
-@pytest.fixture
-def client():
-    return TestClient(app)
 
 
 def create_user_and_watch(client, url="https://www.daraz.pk/products/office-chair-i111.html", title="Office Chair", user_id=None):
@@ -133,7 +127,8 @@ def test_watch_summary_card_contains_latest_price_from_snapshot(client):
     user_id, watch = create_user_and_watch(client)
     watch_id = watch["id"]
 
-    session_factory = get_session_factory()
+    session_factory = client.session_factory
+
     with session_factory() as db:
         creation = RunCreationService(db)
         executor = MockRunExecutor(db)
@@ -173,7 +168,8 @@ def test_failed_run_does_not_corrupt_latest_successful_snapshot_value(client):
     user_id, watch = create_user_and_watch(client)
     watch_id = watch["id"]
 
-    session_factory = get_session_factory()
+    session_factory = client.session_factory
+
     with session_factory() as db:
         creation = RunCreationService(db)
         executor = MockRunExecutor(db)
@@ -205,7 +201,8 @@ def test_watch_overview_aggregates_snapshot_run_event_and_stats(client):
     user_id, watch = create_user_and_watch(client)
     watch_id = watch["id"]
 
-    session_factory = get_session_factory()
+    session_factory = client.session_factory
+
     with session_factory() as db:
         creation = RunCreationService(db)
         executor = MockRunExecutor(db)
@@ -246,7 +243,8 @@ def test_global_activity_feed_cross_watch_newest_first(client):
     _, watch2 = create_user_and_watch(client, url="https://www.daraz.pk/products/item-2.html", title="Wireless Mouse", user_id=user_id)
 
 
-    session_factory = get_session_factory()
+    session_factory = client.session_factory
+
     with session_factory() as db:
         # Create alert for Watch 1 (earlier)
         alert1 = Alert(

@@ -16,7 +16,13 @@ import { EmptyState } from "../../components/common/EmptyState";
 import { useUser } from "../../lib/userContext";
 import { AlertEvent } from "../../types";
 import { api } from "../../lib/api";
-import { formatCurrency, formatRelativeTime, getEventTypeLabel } from "../../lib/utils";
+import {
+  formatCurrency,
+  formatHumanEventHeadline,
+  formatRelativeTime,
+  getEventTypeLabel,
+} from "../../lib/utils";
+
 
 export default function ActivityPage() {
   const { userId, loading: userLoading } = useUser();
@@ -160,9 +166,15 @@ export default function ActivityPage() {
                       </span>
                     </div>
 
-                    <p className="text-sm text-slate-200 mb-3 leading-relaxed">
-                      {event.summary}
+                    <p className="text-sm font-semibold text-white mb-1.5 leading-relaxed">
+                      {formatHumanEventHeadline(event)}
                     </p>
+                    {event.summary && event.summary !== formatHumanEventHeadline(event) && (
+                      <p className="text-xs text-slate-400 mb-3 leading-relaxed">
+                        {event.summary}
+                      </p>
+                    )}
+
 
                     {/* Price Diff Pill */}
                     {hasPriceDiff && (

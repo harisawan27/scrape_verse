@@ -11,7 +11,14 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { AlertEvent } from "../../types";
-import { formatCurrency, formatRelativeTime, getEventTypeLabel } from "../../lib/utils";
+import {
+  formatCurrency,
+  formatHumanEventHeadline,
+  formatRelativeTime,
+  getEventTypeLabel,
+} from "../../lib/utils";
+
+
 
 interface SemanticTimelineProps {
   events: AlertEvent[];
@@ -67,9 +74,15 @@ export function SemanticTimeline({ events }: SemanticTimelineProps) {
                 </span>
               </div>
 
-              <p className="text-sm font-medium text-white mb-2 leading-relaxed">
-                {event.summary}
-              </p>
+              <h4 className="text-sm font-semibold text-white mb-1 leading-relaxed">
+                {formatHumanEventHeadline(event)}
+              </h4>
+              {event.summary && event.summary !== formatHumanEventHeadline(event) && (
+                <p className="text-xs text-slate-400 mb-2 leading-relaxed">
+                  {event.summary}
+                </p>
+              )}
+
 
               {/* Price Change Diff Pill */}
               {hasPriceDiff && (

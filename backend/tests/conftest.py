@@ -28,8 +28,10 @@ def client():
 
     app.dependency_overrides[get_db] = override_db
     with TestClient(app) as test_client:
+        test_client.session_factory = SessionForTest
         yield test_client
     app.dependency_overrides.clear()
+
     engine.dispose()
     os.unlink(path)
 

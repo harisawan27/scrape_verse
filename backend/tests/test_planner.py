@@ -1,12 +1,10 @@
 import uuid
 import pytest
-from fastapi.testclient import TestClient
 
-from app.db import get_session_factory
 from app.integrations.llm import MockLLMPlannerClient, RawPlannerOutput, RawRule, RawSchedule
-from app.main import app
+
 from app.models import Watch
-from app.repositories import WatchRepository
+
 from app.schemas import UserCreate, WatchPlan, WatchPlanSchedule
 from app.services.planner import (
     NaturalLanguageWatchPlanner,
@@ -16,10 +14,6 @@ from app.services.planner import (
     parse_natural_currency,
 )
 
-
-@pytest.fixture
-def client():
-    return TestClient(app)
 
 
 def test_normalize_numeric_threshold():
@@ -275,10 +269,10 @@ def test_api_watch_plan_preview_endpoint(client):
 
 def test_api_watch_create_from_plan_endpoint(client):
     """API test for POST /v1/watches/from-plan."""
-    session_factory = get_session_factory()
-    with session_factory() as db:
-        user = WatchRepository(db).create_user(UserCreate(email=f"planner-{uuid.uuid4()}@example.com"))
-        user_id = user.id
+    user_res = client.post("/v1/users", json={"email": f"planner-{uuid.uuid4()}@example.com"})
+    assert user_res.status_code == 201
+    user_id = user_res.json()["id"]
+
 
     plan_payload = {
         "url": "https://www.daraz.pk/products/wireless-earbuds-i8888.html",
