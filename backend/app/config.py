@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     default_timezone: str = "Asia/Karachi"
 
     # CORS Configuration for Next.js / Vercel frontend
-    cors_origins: list[str] = Field(
+    cors_origins: str | list[str] = Field(
         default=[
             "http://localhost:3000",
             "http://127.0.0.1:3000",
@@ -71,9 +71,9 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("cors_origins", "cors_origin", "allowed_origins"),
     )
 
-    @field_validator("cors_origins", mode="before")
+    @field_validator("cors_origins", mode="after")
     @classmethod
-    def parse_cors_origins(cls, value: Any) -> list[str]:
+    def normalize_cors_origins(cls, value: str | list[str]) -> list[str]:
         if isinstance(value, str):
             value = value.strip()
             if value.startswith("[") and value.endswith("]"):
@@ -83,6 +83,7 @@ class Settings(BaseSettings):
                     pass
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
+
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
