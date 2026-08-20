@@ -18,7 +18,7 @@ if backend_dir not in sys.path:
 
 from app.main import app as fastapi_app
 
-# 3. Create a lightweight Gradio interface
+# 3. Create a lightweight Gradio interface for the Hub
 def build_gradio_ui() -> gr.Blocks:
     with gr.Blocks(title="Web Radar API & Monitoring Hub") as ui:
         gr.Markdown("""
@@ -42,6 +42,7 @@ def build_gradio_ui() -> gr.Blocks:
 app = gr.mount_gradio_app(fastapi_app, build_gradio_ui(), path="/hub")
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 7860))
-    print(f"Starting Web Radar unified single-server on port {port}...")
+    # In Hugging Face Spaces (sdk: gradio), the reverse proxy strictly routes to port 7860
+    port = 7860 if os.environ.get("SPACE_ID") else int(os.environ.get("PORT", 7860))
+    print(f"Starting Web Radar API on port {port}...")
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
