@@ -87,8 +87,7 @@ Migrations applied:
 #### 1. Create the Hugging Face Space
 1. Go to [huggingface.co/new-space](https://huggingface.co/new-space).
 2. Choose **Gradio** (Free Tier CPU) as the Space SDK.
-3. Set Space Name (e.g. `web-radar-api`).
-
+3. Set Space Name: `web-radar`.
 
 #### 2. Configure GitHub Secrets & Variables
 
@@ -99,7 +98,8 @@ In your GitHub Repo **Settings** $\rightarrow$ **Secrets and variables** $\right
    - **Value**: Create a **Write** token on [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) and paste it here.
 2. **Repository Variable** (under **Variables** tab):
    - **Name**: `HF_SPACE`
-   - **Value**: `<your-hf-username>/<your-space-name>` (e.g. `harisawan27/web-radar-api`)
+   - **Value**: `<your-hf-username>/web-radar` (e.g. `harisawan27/web-radar`)
+
 
 #### 3. Configure Space Secrets & Variables
 In your Hugging Face Space **Settings** $\rightarrow$ **Variables and secrets**:

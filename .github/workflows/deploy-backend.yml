@@ -85,7 +85,8 @@ jobs:
           if [ -z "$TARGET_SPACE" ]; then
             echo "::error::HF_SPACE variable or secret is not defined."
             echo "Please set HF_SPACE in your GitHub Repo Settings -> Secrets and variables -> Actions -> Variables."
-            echo "Example: HF_SPACE = harisawan27/web-radar-api"
+            echo "Example: HF_SPACE = harisawan27/web-radar"
+
             exit 1
           fi
 

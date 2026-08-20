@@ -1,0 +1,236 @@
+import {
+  AlertEvent,
+  User,
+  Watch,
+  WatchOverview,
+  WatchPlan,
+  WatchPlanPreviewResponse,
+  WatchRun,
+  WatchSummary,
+  WatchUpdateInput,
+} from "../types";
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+
+class ApiError extends Error {
+  status: number;
+  data: any;
+
+  constructor(message: string, status: number, data?: any) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.data = data;
+  }
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function request<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const url = `${API_BASE_URL}${endpoint}`;
+  const method = (options.method || "GET").toUpperCase();
+  const isIdempotentGet = method === "GET";
+  const maxRetries = isIdempotentGet ? 2 : 0;
+
+  const headers = {
+    "Content-Type": "application/json",
+    ...(options.headers || {}),
+  };
+
+  let lastError: any = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 0) {
+        // Cold-start backoff: 500ms, 1200ms
+        await sleep(attempt === 1 ? 500 : 1200);
+      }
+
+      const res = await fetch(url, {
+        ...options,
+        headers,
+      });
+
+      if (res.status === 204) {
+        return {} as T;
+      }
+
+      // If backend is waking up (502/503/504) on a GET request, retry
+      if (
+        isIdempotentGet &&
+        attempt < maxRetries &&
+        (res.status === 502 || res.status === 503 || res.status === 504)
+      ) {
+        continue;
+      }
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        const message =
+          data?.detail ||
+          (typeof data?.message === "string" ? data.message : null) ||
+          `HTTP ${res.status}: ${res.statusText}`;
+        throw new ApiError(message, res.status, data);
+      }
+
+      return data as T;
+    } catch (err: any) {
+      lastError = err;
+      if (err instanceof ApiError) {
+        // Do not retry client errors (4xx)
+        if (err.status >= 400 && err.status < 500) {
+          throw err;
+        }
+      }
+      // If write request or final attempt, throw
+      if (!isIdempotentGet || attempt === maxRetries) {
+        if (err instanceof ApiError) {
+          throw err;
+        }
+        throw new ApiError(
+          err?.message || "Failed to communicate with Web Radar backend",
+          0,
+          err
+        );
+      }
+    }
+  }
+
+  throw (
+    lastError ||
+    new ApiError("Failed to communicate with Web Radar backend", 0)
+  );
+}
+
+export const api = {
+  /**
+   * Ensure a user exists by email, returning the persistent User record.
+   */
+  async ensureUser(email: string = "demo@webradar.io"): Promise<User> {
+    return request<User>("/v1/users/ensure", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  /**
+   * Translates a natural language instruction + URL into a structured plan preview.
+   */
+  async previewWatchPlan(
+    message: string,
+    url?: string,
+    timezone: string = "Asia/Karachi"
+  ): Promise<WatchPlanPreviewResponse> {
+    return request<WatchPlanPreviewResponse>("/v1/watch-plans/preview", {
+      method: "POST",
+      body: JSON.stringify({
+        message,
+        url: url && url.trim().length > 0 ? url.trim() : null,
+        timezone,
+      }),
+    });
+  },
+
+  /**
+   * Persists a Watch directly from a validated plan preview.
+   */
+  async createWatchFromPlan(userId: string, plan: WatchPlan): Promise<Watch> {
+    return request<Watch>("/v1/watches/from-plan", {
+      method: "POST",
+      body: JSON.stringify({
+        user_id: userId,
+        plan,
+      }),
+    });
+  },
+
+  /**
+   * List all Watches for the current user (summary cards with latest values).
+   */
+  async getWatches(userId: string): Promise<WatchSummary[]> {
+    return request<WatchSummary[]>(
+      `/v1/watches?user_id=${encodeURIComponent(userId)}`
+    );
+  },
+
+  /**
+   * Retrieve aggregate overview for a specific Watch.
+   */
+  async getWatchOverview(watchId: string): Promise<WatchOverview> {
+    return request<WatchOverview>(
+      `/v1/watches/${encodeURIComponent(watchId)}/overview`
+    );
+  },
+
+  /**
+   * Retrieve global cross-watch activity feed.
+   */
+  async getActivity(
+    userId: string,
+    limit: number = 50
+  ): Promise<AlertEvent[]> {
+    return request<AlertEvent[]>(
+      `/v1/activity?user_id=${encodeURIComponent(userId)}&limit=${limit}`
+    );
+  },
+
+  /**
+   * Update Watch configuration (cadence, status, monitoring spec).
+   */
+  async updateWatch(
+    watchId: string,
+    data: WatchUpdateInput
+  ): Promise<Watch> {
+    return request<Watch>(`/v1/watches/${encodeURIComponent(watchId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Trigger an immediate manual run for a Watch.
+   */
+  async triggerWatchRun(
+    watchId: string,
+    executeNow: boolean = true
+  ): Promise<WatchRun> {
+    return request<WatchRun>(
+      `/v1/watches/${encodeURIComponent(watchId)}/runs?execute_now=${executeNow}`,
+      {
+        method: "POST",
+      }
+    );
+  },
+
+  /**
+   * Delete a Watch.
+   */
+  async deleteWatch(watchId: string): Promise<void> {
+    return request<void>(`/v1/watches/${encodeURIComponent(watchId)}`, {
+      method: "DELETE",
+    });
+  },
+
+  /**
+   * Trigger scheduler tick to evaluate due watches.
+   */
+  async triggerSchedulerTick(): Promise<WatchRun[]> {
+    return request<WatchRun[]>("/v1/scheduler/tick", {
+      method: "POST",
+    });
+  },
+
+  /**
+   * Check backend health.
+   */
+  async checkHealth(): Promise<{ status: string }> {
+    return request<{ status: string }>("/health");
+  },
+};
+
+export { ApiError };

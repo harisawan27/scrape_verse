@@ -1,5 +1,6 @@
 ---
-title: Web Radar API
+title: web-radar
+
 emoji: 📡
 colorFrom: blue
 colorTo: purple
