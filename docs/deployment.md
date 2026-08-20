@@ -82,12 +82,13 @@ Migrations applied:
 
 ## 4. Backend Deployment Guide
 
-### Option A: Hugging Face Spaces (Docker SDK + GitHub Actions CI/CD)
+### Option A: Hugging Face Spaces (Gradio / Python Free Tier SDK + GitHub Actions)
 
 #### 1. Create the Hugging Face Space
 1. Go to [huggingface.co/new-space](https://huggingface.co/new-space).
-2. Choose **Docker** as the Space SDK (Blank template).
+2. Choose **Gradio** (Free Tier CPU) as the Space SDK.
 3. Set Space Name (e.g. `web-radar-api`).
+
 
 #### 2. Configure GitHub Secrets & Variables
 

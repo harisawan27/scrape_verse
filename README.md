@@ -3,10 +3,12 @@ title: Web Radar API
 emoji: 📡
 colorFrom: blue
 colorTo: purple
-sdk: docker
-app_port: 7860
+sdk: gradio
+sdk_version: 5.20.1
+app_file: app.py
 pinned: false
 ---
+
 
 # 🌐 Web Radar (ScrapeVerse)
 

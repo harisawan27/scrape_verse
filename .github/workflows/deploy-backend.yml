@@ -7,9 +7,11 @@ on:
     paths:
       - 'backend/**'
       - 'database/**'
-      - 'Dockerfile'
+      - 'app.py'
+      - 'requirements.txt'
       - 'README.md'
       - '.github/workflows/deploy-backend.yml'
+
 
   workflow_dispatch:
 
