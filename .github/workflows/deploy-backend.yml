@@ -1,0 +1,92 @@
+name: Deploy Backend to Hugging Face Spaces
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - 'database/**'
+      - 'Dockerfile'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Sync & Deploy to Hugging Face Space
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Hugging Face Hub CLI
+        run: |
+          pip install --upgrade huggingface_hub
+
+      - name: Authenticate with Hugging Face (Trusted Publisher OIDC or Secret)
+        id: auth
+        env:
+          HF_TOKEN_SECRET: ${{ secrets.HF_TOKEN }}
+          ACTIONS_ID_TOKEN_REQUEST_URL: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL }}
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}
+        run: |
+          if [ -n "$HF_TOKEN_SECRET" ]; then
+            echo "Using static HF_TOKEN secret."
+            echo "HF_TOKEN=$HF_TOKEN_SECRET" >> $GITHUB_ENV
+          else
+            echo "Requesting GitHub OIDC Token for Hugging Face Trusted Publisher..."
+            GH_JWT=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://huggingface.co" | jq -r '.value')
+            
+            if [ -z "$GH_JWT" ] || [ "$GH_JWT" = "null" ]; then
+              echo "Error: Could not retrieve GitHub OIDC token."
+              exit 1
+            fi
+
+            echo "Exchanging OIDC token with Hugging Face API..."
+            HF_TEMP_TOKEN=$(curl -s -X POST "https://huggingface.co/api/oidc/token" \
+              -H "Content-Type: application/json" \
+              -d "{\"token\": \"$GH_JWT\"}" | jq -r '.token // empty')
+
+            if [ -n "$HF_TEMP_TOKEN" ] && [ "$HF_TEMP_TOKEN" != "null" ]; then
+              echo "Successfully exchanged OIDC token with Hugging Face."
+              echo "HF_TOKEN=$HF_TEMP_TOKEN" >> $GITHUB_ENV
+            else
+              echo "Warning: Could not obtain token from HF OIDC. Checking if HF_SPACE is configured for git push."
+              echo "HF_TOKEN=" >> $GITHUB_ENV
+            fi
+          fi
+
+      - name: Push to Hugging Face Space
+        env:
+          HF_SPACE: ${{ vars.HF_SPACE || secrets.HF_SPACE }}
+        run: |
+          # If HF_SPACE is not set as a variable, prompt the operator
+          TARGET_SPACE="${HF_SPACE}"
+          if [ -z "$TARGET_SPACE" ]; then
+            echo "Error: HF_SPACE variable or secret is not defined."
+            echo "Please set HF_SPACE in your GitHub Repo Settings -> Variables -> Actions -> New repository variable."
+            echo "Example: HF_SPACE = harisawan27/web-radar-api"
+            exit 1
+          fi
+
+          echo "Deploying to Hugging Face Space: $TARGET_SPACE"
+          git config --global user.email "bot@webradar.io"
+          git config --global user.name "Web Radar CI"
+
+          git remote add hf "https://user:$HF_TOKEN@huggingface.co/spaces/$TARGET_SPACE" || true
+          git push -f hf main:main
+          echo "Successfully pushed code to Hugging Face Space: $TARGET_SPACE"

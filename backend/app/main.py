@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+import logging
 from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import IntegrityError
@@ -24,19 +26,56 @@ from app.schemas import (
     WatchUpdate,
 )
 from app.services.planner import NaturalLanguageWatchPlanner
-
-
 from app.services.runs import (
     ActiveRunExistsError,
+    BrightDataRunExecutor,
     MockRunExecutor,
     RunCreationService,
     WatchNotEligibleError,
     WatchNotFoundError,
 )
+from app.services.scheduler import AsyncSchedulerRunner
 
 settings = get_settings()
+logger = logging.getLogger("webradar")
 
-app = FastAPI(title="Web Radar API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 1. Configure structured logging
+    logging.basicConfig(
+        level=getattr(logging, settings.log_level.upper(), logging.INFO),
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+    logger.info(
+        "Initializing Web Radar (env=%s, scheduler=%s, interval=%.1fs)",
+        settings.app_env,
+        settings.scheduler_enabled,
+        settings.scheduler_poll_interval_seconds,
+    )
+
+    # 2. Start autonomous background scheduler loop if enabled
+    runner: AsyncSchedulerRunner | None = None
+    if settings.scheduler_enabled:
+        runner = AsyncSchedulerRunner(poll_interval_seconds=settings.scheduler_poll_interval_seconds)
+        runner.start()
+        logger.info("Autonomous background scheduler loop started successfully")
+
+    yield
+
+    # 3. Graceful shutdown
+    if runner:
+        logger.info("Gracefully stopping autonomous background scheduler loop...")
+        await runner.stop()
+        logger.info("Scheduler loop stopped")
+
+
+app = FastAPI(
+    title="Web Radar API",
+    version="0.1.0",
+    description="Autonomous web monitoring backed by Bright Data Scraper Studio & Neon PostgreSQL",
+    lifespan=lifespan,
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -48,16 +87,15 @@ app.add_middleware(
 )
 
 
-
 @app.get("/health")
 def health() -> dict[str, str]:
-    """Liveness check; it intentionally does not establish a database connection."""
+    """Liveness check; intentionally fast and does not establish a database connection."""
     return {"status": "ok"}
 
 
 @app.get("/health/database")
 def database_health() -> dict[str, str]:
-    """Readiness check for Neon/PostgreSQL; it returns no connection details."""
+    """Readiness check for Neon/PostgreSQL; returns no connection details."""
     try:
         check_database_connection()
     except Exception as exc:
@@ -69,7 +107,9 @@ def database_health() -> dict[str, str]:
 def create_user(data: UserCreate, db: Session = Depends(get_db)):
     repository = WatchRepository(db)
     try:
-        return repository.create_user(data)
+        user = repository.create_user(data)
+        logger.info("User created: %s (%s)", user.id, user.email)
+        return user
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail="email already exists") from exc
@@ -82,7 +122,9 @@ def ensure_user(data: UserCreate, db: Session = Depends(get_db)):
     if existing is not None:
         return existing
     try:
-        return repository.create_user(data)
+        user = repository.create_user(data)
+        logger.info("Demo user ensured: %s (%s)", user.id, user.email)
+        return user
     except IntegrityError:
         db.rollback()
         existing = repository.get_user_by_email(data.email)
@@ -91,13 +133,14 @@ def ensure_user(data: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="could not ensure user")
 
 
-
 @app.post("/v1/watches", response_model=WatchRead, status_code=status.HTTP_201_CREATED)
 def create_watch(data: WatchCreate, db: Session = Depends(get_db)):
     repository = WatchRepository(db)
     if repository.get_user(data.user_id) is None:
         raise HTTPException(status_code=404, detail="user not found")
-    return repository.create(data)
+    watch = repository.create(data)
+    logger.info("Watch created: %s ('%s')", watch.id, watch.title)
+    return watch
 
 
 @app.get("/v1/watches", response_model=list[WatchSummaryRead])
@@ -126,14 +169,15 @@ def list_activity(user_id: str, limit: int = 50, db: Session = Depends(get_db)):
     return WatchRepository(db).list_activity_for_user(user_id, limit=limit)
 
 
-
 @app.patch("/v1/watches/{watch_id}", response_model=WatchRead)
 def update_watch(watch_id: str, data: WatchUpdate, db: Session = Depends(get_db)):
     repository = WatchRepository(db)
     watch = repository.get(watch_id)
     if watch is None:
         raise HTTPException(status_code=404, detail="watch not found")
-    return repository.update(watch, data)
+    updated = repository.update(watch, data)
+    logger.info("Watch updated: %s (status=%s)", watch.id, updated.status)
+    return updated
 
 
 @app.delete("/v1/watches/{watch_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -143,12 +187,13 @@ def delete_watch(watch_id: str, db: Session = Depends(get_db)) -> Response:
     if watch is None:
         raise HTTPException(status_code=404, detail="watch not found")
     repository.delete(watch)
+    logger.info("Watch deleted: %s", watch_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.post("/v1/watches/{watch_id}/runs", response_model=WatchRunRead, status_code=status.HTTP_201_CREATED)
 def trigger_watch_run(watch_id: str, execute_now: bool = True, db: Session = Depends(get_db)):
-    """Create a durable pending Run, then optionally execute it via MockRunExecutor."""
+    """Create a durable pending Run, then execute it via BrightData or Mock executor."""
     creation_service = RunCreationService(db)
     try:
         run = creation_service.create(watch_id)
@@ -162,6 +207,8 @@ def trigger_watch_run(watch_id: str, execute_now: bool = True, db: Session = Dep
     if execute_now:
         executor = MockRunExecutor(db)
         run = executor.execute(run)
+        logger.info("Run %s executed (status=%s)", run.id, run.status)
+
 
     repository = WatchRepository(db)
     return repository.get_run(run.id)
@@ -208,24 +255,20 @@ def list_watch_repairs(watch_id: str, db: Session = Depends(get_db)):
     return repository.list_repairs_for_watch(watch_id)
 
 
-
-
 @app.post("/v1/scheduler/tick", response_model=list[WatchRunRead])
 def run_scheduler_tick(db: Session = Depends(get_db)):
-    """Development trigger: Discovers and executes all currently due Watches."""
+    """Trigger: Discovers and executes all currently due Watches."""
     from app.services.scheduler import SchedulerService
 
     scheduler = SchedulerService(db)
     runs = scheduler.tick()
     repository = WatchRepository(db)
+    logger.info("Manual scheduler tick executed %d run(s)", len(runs))
     return [repository.get_run(r.id) for r in runs if repository.get_run(r.id) is not None]
 
 
 @app.get("/v1/scheduler/status")
 def get_scheduler_status():
-    from app.config import get_settings
-
-    settings = get_settings()
     return {
         "status": "ready",
         "poll_interval_seconds": settings.scheduler_poll_interval_seconds,
@@ -254,9 +297,7 @@ def create_watch_from_plan(req: WatchCreateFromPlanRequest, db: Session = Depend
             user_id=req.user_id,
             plan=req.plan,
         )
+        logger.info("Watch created from AI plan: %s ('%s')", watch.id, watch.title)
         return watch
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
-
