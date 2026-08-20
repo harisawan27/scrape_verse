@@ -3,7 +3,6 @@ import sys
 import subprocess
 import gradio as gr
 import uvicorn
-from fastapi.responses import RedirectResponse
 
 # 1. Run Neon PostgreSQL database migrations on startup
 try:
@@ -19,27 +18,30 @@ if backend_dir not in sys.path:
 
 from app.main import app as fastapi_app
 
-# 3. Create a lightweight Gradio interface for the Hugging Face Space UI
-with gr.Blocks(title="Web Radar API & Monitoring Hub") as demo:
-    gr.Markdown("""
-    # 📡 Web Radar — Backend API & Monitoring Engine
+# 3. Create a lightweight Gradio interface
+def build_gradio_ui() -> gr.Blocks:
+    with gr.Blocks(title="Web Radar API & Monitoring Hub") as ui:
+        gr.Markdown("""
+        # 📡 Web Radar — Backend API & Monitoring Engine
 
-    Web Radar is an autonomous, persistent web monitoring platform backed by **Bright Data Scraper Studio** and **Neon PostgreSQL**.
+        Web Radar is an autonomous, persistent web monitoring platform backed by **Bright Data Scraper Studio** and **Neon PostgreSQL**.
 
-    ### 🚀 API Endpoints
-    - **Interactive API Documentation (Swagger UI)**: [Open `/docs`](/docs)
-    - **Alternative API Docs (ReDoc)**: [Open `/redoc`](/redoc)
-    - **Liveness Probe**: [Check `/health`](/health)
-    - **Database Health**: [Check `/health/database`](/health/database)
+        ### 🚀 API Endpoints
+        - **Interactive API Documentation (Swagger UI)**: [Open `/docs`](/docs)
+        - **Alternative API Docs (ReDoc)**: [Open `/redoc`](/redoc)
+        - **Liveness Probe**: [Check `/health`](/health)
+        - **Database Health**: [Check `/health/database`](/health/database)
 
-    ### 🌐 Connected Frontend
-    The Next.js 15 frontend communicates with this backend via REST API (`/v1/watch-plans`, `/v1/watches`, `/v1/activity`, `/v1/auth/me`).
-    """)
+        ### 🌐 Connected Frontend
+        The Next.js 15 frontend communicates with this backend via REST API (`/v1/watch-plans`, `/v1/watches`, `/v1/activity`, `/v1/auth/me`).
+        """)
+    return ui
 
 # 4. Mount Gradio alongside the FastAPI REST API at /hub
-app = gr.mount_gradio_app(fastapi_app, demo, path="/hub")
+# Single-process architecture: FastAPI owns the application; Gradio is mounted at /hub.
+app = gr.mount_gradio_app(fastapi_app, build_gradio_ui(), path="/hub")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 7860))
-    print(f"Starting Web Radar API on port {port}...")
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    print(f"Starting Web Radar unified single-server on port {port}...")
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
