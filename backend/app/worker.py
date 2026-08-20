@@ -43,7 +43,7 @@ async def main() -> None:
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, handle_signal)
 
-    runner.start()
+    await runner.start()
     try:
         if sys.platform == "win32":
             while not stop_event.is_set():
