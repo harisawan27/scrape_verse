@@ -181,12 +181,13 @@ class AsyncSchedulerRunner:
     def is_running(self) -> bool:
         return self._running
 
-    def start(self) -> None:
+    async def start(self) -> None:
         if self._running:
             return
         self._running = True
         self._task = asyncio.create_task(self._loop())
         logger.info("Scheduler runner started (interval=%.1fs)", self.poll_interval_seconds)
+
 
     async def stop(self) -> None:
         if not self._running:

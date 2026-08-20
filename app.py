@@ -3,6 +3,7 @@ import sys
 import subprocess
 import gradio as gr
 import uvicorn
+from fastapi.responses import RedirectResponse
 
 # 1. Run Neon PostgreSQL database migrations on startup
 try:
@@ -32,11 +33,11 @@ with gr.Blocks(title="Web Radar API & Monitoring Hub") as demo:
     - **Database Health**: [Check `/health/database`](/health/database)
 
     ### 🌐 Connected Frontend
-    The Next.js 15 frontend communicates with this backend via REST API (`/v1/watch-plans`, `/v1/watches`, `/v1/activity`).
+    The Next.js 15 frontend communicates with this backend via REST API (`/v1/watch-plans`, `/v1/watches`, `/v1/activity`, `/v1/auth/me`).
     """)
 
-# 4. Mount Gradio alongside the FastAPI REST API
-app = gr.mount_gradio_app(fastapi_app, demo, path="/")
+# 4. Mount Gradio alongside the FastAPI REST API at /hub
+app = gr.mount_gradio_app(fastapi_app, demo, path="/hub")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 7860))
