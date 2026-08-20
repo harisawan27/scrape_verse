@@ -4,6 +4,17 @@ import subprocess
 import gradio as gr
 import uvicorn
 
+# 0. ZeroGPU startup compatibility shim (for Hugging Face ZeroGPU runtime)
+try:
+    import spaces
+
+    @spaces.GPU(duration=1)
+    def zerogpu_startup_compatibility():
+        return "ok"
+except Exception:
+    def zerogpu_startup_compatibility():
+        return "ok"
+
 # 1. Run Neon PostgreSQL database migrations on startup
 try:
     print("Executing database migrations against Neon PostgreSQL...")
