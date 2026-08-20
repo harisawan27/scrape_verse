@@ -295,8 +295,9 @@ def test_api_watch_create_from_plan_endpoint(client):
         "assumptions": ["Daraz product"],
     }
 
-    resp = client.post("/v1/watches/from-plan", json={"user_id": user_id, "plan": plan_payload})
+    resp = client.post("/v1/watches/from-plan", json={"user_id": user_id, "plan": plan_payload}, headers={"X-User-Id": user_id})
     assert resp.status_code == 201
+
     data = resp.json()
     assert data["id"] is not None
     assert data["user_id"] == user_id

@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Activity,
@@ -10,6 +11,7 @@ import {
   Filter,
   TrendingDown,
   Sparkles,
+  Radar,
 } from "lucide-react";
 import { Header } from "../../components/layout/Header";
 import { EmptyState } from "../../components/common/EmptyState";
@@ -23,43 +25,74 @@ import {
   getEventTypeLabel,
 } from "../../lib/utils";
 
-
 export default function ActivityPage() {
-  const { userId, loading: userLoading } = useUser();
+  const router = useRouter();
+  const { userId, isAuthenticated, loading: userLoading } = useUser();
   const [events, setEvents] = useState<AlertEvent[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [filterType, setFilterType] = useState<string>("all");
 
-  const loadActivity = async () => {
-    if (!userId) return;
+  // Protect route
+  useEffect(() => {
+    if (!userLoading && !isAuthenticated) {
+      router.replace("/sign-in");
+    }
+  }, [isAuthenticated, userLoading, router]);
+
+  const loadActivity = useCallback(async (showLoading = true) => {
+    if (!userId && !isAuthenticated) return;
     try {
-      setLoading(true);
-      const res = await api.getActivity(userId, 100);
+      if (showLoading) setLoading(true);
+      const res = await api.getActivity(userId || undefined, 100);
       setEvents(res);
     } catch (err) {
       console.error("Failed to load activity:", err);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
-  };
+  }, [userId, isAuthenticated]);
 
   useEffect(() => {
-    if (userId) {
-      loadActivity();
+    if (isAuthenticated) {
+      loadActivity(true);
     }
-  }, [userId]);
+  }, [isAuthenticated, loadActivity]);
+
+  // Live polling (every 8 seconds when tab is active)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        loadActivity(false);
+      }
+    }, 8000);
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated, loadActivity]);
 
   const filteredEvents = events.filter((e) => {
     if (filterType === "all") return true;
     return e.event_type === filterType;
   });
 
+  if (userLoading || (!isAuthenticated && userLoading)) {
+    return (
+      <div className="flex-1 flex items-center justify-center min-h-[60vh]">
+        <div className="flex flex-col items-center gap-3">
+          <Radar className="w-8 h-8 text-radar-cyan animate-spin" />
+          <p className="text-xs text-slate-400 font-mono">Loading activity feed...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col min-h-full">
       <Header
         title="While You Were Away"
         subtitle="Semantic change alerts, threshold crossings, and inventory events"
-        onRefresh={loadActivity}
+        onRefresh={() => loadActivity(true)}
       />
 
       <div className="flex-1 p-6 md:p-8 space-y-6 max-w-5xl mx-auto w-full">
@@ -94,116 +127,123 @@ export default function ActivityPage() {
         </div>
 
         {/* Activity Feed List */}
-        {loading || userLoading ? (
+        {loading ? (
           <div className="space-y-4">
             {[1, 2, 3, 4].map((i) => (
               <div
                 key={i}
-                className="h-28 rounded-2xl bg-space-900/60 border border-space-750 animate-pulse p-4"
+                className="h-28 rounded-2xl bg-space-900/60 border border-space-750 animate-pulse"
               />
             ))}
           </div>
         ) : filteredEvents.length === 0 ? (
           <EmptyState
-            icon={BellRing}
+            icon={Activity}
             title={
               filterType !== "all"
-                ? "No Matching Events"
-                : "No Semantic Changes Yet"
+                ? "No Events Match Filter"
+                : "No Activity Detected Yet"
             }
             description={
               filterType !== "all"
-                ? "No events match the selected event type filter."
-                : "When your Radar Watches detect price threshold crossings, price drops, or stock availability changes on Daraz, they will appear in this feed."
+                ? "Try selecting 'All Events' to see alerts across other rule types."
+                : "Web Radar runs server-side 24/7. When prices change, thresholds cross, or stock updates, meaningful alerts will automatically surface here."
             }
-            actionText="Go to Command Center"
-            onAction={() => {
-              window.location.href = "/";
-            }}
           />
         ) : (
-          <div className="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-space-750">
-            {filteredEvents.map((event) => {
-              const typeInfo = getEventTypeLabel(event.event_type);
-              const prevPrice = event.details?.previous_value;
-              const currPrice = event.details?.current_value;
-              const hasPriceDiff = prevPrice !== undefined && currPrice !== undefined;
-              const isDrop = hasPriceDiff && currPrice < prevPrice;
+          <div className="space-y-4">
+            {filteredEvents.map((evt) => {
+              const headline = formatHumanEventHeadline(evt);
+              const isThreshold = evt.event_type === "price_threshold_crossed";
+              const isDrop = evt.event_type === "price_decreased";
+              const isStock = evt.event_type === "back_in_stock";
 
               return (
-                <div key={event.id} className="relative group">
-                  {/* Timeline Bullet */}
-                  <span
-                    className={`absolute -left-[27px] top-4 h-3.5 w-3.5 rounded-full border-2 border-space-950 ${
-                      isDrop
-                        ? "bg-radar-emerald shadow-[0_0_8px_#10b981]"
-                        : "bg-radar-cyan shadow-[0_0_8px_#06b6d4]"
-                    }`}
-                  />
-
-                  {/* Card */}
-                  <div className="rounded-2xl p-5 bg-gradient-to-r from-space-900 to-space-850 border border-space-750 hover:border-space-600 transition-all duration-200">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
-                      <div className="flex items-center gap-2">
+                <div
+                  key={evt.id}
+                  className={`p-5 rounded-2xl border transition-all ${
+                    isThreshold
+                      ? "bg-gradient-to-r from-emerald-950/20 via-space-900 to-space-900 border-emerald-500/30 hover:border-emerald-500/50"
+                      : isDrop
+                      ? "bg-gradient-to-r from-cyan-950/20 via-space-900 to-space-900 border-radar-cyan/30 hover:border-radar-cyan/50"
+                      : isStock
+                      ? "bg-gradient-to-r from-indigo-950/20 via-space-900 to-space-900 border-radar-indigo/30 hover:border-radar-indigo/50"
+                      : "bg-space-900 border-space-700/80 hover:border-space-600"
+                  }`}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                    <div className="space-y-1.5 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border ${typeInfo.color}`}
+                          className={`text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                            isThreshold
+                              ? "bg-emerald-950/60 text-emerald-300 border-emerald-800/60"
+                              : isDrop
+                              ? "bg-cyan-950/60 text-cyan-300 border-cyan-800/60"
+                              : isStock
+                              ? "bg-indigo-950/60 text-indigo-300 border-indigo-800/60"
+                              : "bg-space-800 text-slate-300 border-space-700"
+                          }`}
                         >
-                          {typeInfo.label}
+                          {getEventTypeLabel(evt.event_type).label}
                         </span>
 
-                        <Link
-                          href={`/watches/${event.watch_id}`}
-                          className="text-xs font-semibold text-white hover:text-radar-cyan flex items-center gap-1 transition-colors"
-                        >
-                          <span>{event.watch_title || "Monitored Watch"}</span>
-                          <ExternalLink className="h-3 w-3" />
-                        </Link>
+
+                        <span className="text-xs text-slate-500 flex items-center gap-1 font-mono">
+                          <Clock className="h-3 w-3" />
+                          {formatRelativeTime(evt.created_at)}
+                        </span>
                       </div>
 
-                      <span className="text-xs text-slate-400 flex items-center gap-1 font-mono">
-                        <Clock className="h-3 w-3 text-slate-500" />
-                        {formatRelativeTime(event.created_at)}
-                      </span>
+                      <h4 className="text-base font-bold text-white tracking-tight">
+                        {headline}
+                      </h4>
+
+                      <p className="text-xs text-slate-400">
+                        {evt.summary}
+                      </p>
                     </div>
 
-                    <p className="text-sm font-semibold text-white mb-1.5 leading-relaxed">
-                      {formatHumanEventHeadline(event)}
-                    </p>
-                    {event.summary && event.summary !== formatHumanEventHeadline(event) && (
-                      <p className="text-xs text-slate-400 mb-3 leading-relaxed">
-                        {event.summary}
-                      </p>
-                    )}
-
-
-                    {/* Price Diff Pill */}
-                    {hasPriceDiff && (
-                      <div className="pt-3 border-t border-space-800 flex items-center justify-between text-xs font-mono">
-                        <div className="flex items-center gap-2">
-                          <span className="text-slate-500 line-through">
-                            {formatCurrency(prevPrice)}
-                          </span>
-                          <span className="text-slate-400">→</span>
-                          <span className="text-base font-bold text-white">
-                            {formatCurrency(currPrice)}
-                          </span>
-                        </div>
-
-                        {isDrop && (
-                          <span className="inline-flex items-center gap-1 text-xs font-bold text-radar-emerald bg-radar-emerald/10 px-2 py-0.5 rounded-md border border-radar-emerald/20">
-                            <TrendingDown className="h-3.5 w-3.5" />
-                            <span>
-                              -
-                              {Math.round(
-                                ((prevPrice - currPrice) / prevPrice) * 100
-                              )}
-                              % Drop
-                            </span>
-                          </span>
-                        )}
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2 self-end sm:self-start">
+                      <Link
+                        href={`/watches/${evt.watch_id}`}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-space-850 hover:bg-space-800 text-slate-200 border border-space-700 transition-colors"
+                      >
+                        <span>View Watch</span>
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </Link>
+                    </div>
                   </div>
+
+                  {/* Context Values */}
+                  {evt.details && (
+                    <div className="mt-3 pt-3 border-t border-space-800/80 flex items-center gap-4 text-xs text-slate-400 font-mono">
+                      {evt.details.previous_value !== undefined && (
+                        <span>
+                          Previous:{" "}
+                          <span className="text-slate-300 line-through">
+                            {formatCurrency(evt.details.previous_value)}
+                          </span>
+                        </span>
+                      )}
+                      {evt.details.current_value !== undefined && (
+                        <span>
+                          Current:{" "}
+                          <span className="text-emerald-400 font-bold">
+                            {formatCurrency(evt.details.current_value)}
+                          </span>
+                        </span>
+                      )}
+                      {evt.details.threshold !== undefined && (
+                        <span>
+                          Target:{" "}
+                          <span className="text-cyan-400 font-medium">
+                            {formatCurrency(evt.details.threshold)}
+                          </span>
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}

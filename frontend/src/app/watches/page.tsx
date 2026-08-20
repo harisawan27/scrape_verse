@@ -1,40 +1,62 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Header } from "../../components/layout/Header";
 import { WatchCard } from "../../components/dashboard/WatchCard";
 import { EmptyState } from "../../components/common/EmptyState";
 import { useUser } from "../../lib/userContext";
 import { WatchSummary } from "../../types";
 import { api } from "../../lib/api";
-import { Search, Eye, Filter, Plus } from "lucide-react";
+import { Search, Eye, Filter, Plus, Radar } from "lucide-react";
 import Link from "next/link";
 
 export default function WatchesPage() {
-  const { userId, loading: userLoading } = useUser();
+  const router = useRouter();
+  const { userId, isAuthenticated, loading: userLoading } = useUser();
   const [watches, setWatches] = useState<WatchSummary[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterHealth, setFilterHealth] = useState<string>("all");
 
-  const loadWatches = async () => {
-    if (!userId) return;
+  // Protect route
+  useEffect(() => {
+    if (!userLoading && !isAuthenticated) {
+      router.replace("/sign-in");
+    }
+  }, [isAuthenticated, userLoading, router]);
+
+  const loadWatches = useCallback(async (showLoading = true) => {
+    if (!userId && !isAuthenticated) return;
     try {
-      setLoading(true);
-      const res = await api.getWatches(userId);
+      if (showLoading) setLoading(true);
+      const res = await api.getWatches(userId || undefined);
       setWatches(res);
     } catch (err) {
       console.error("Failed to load watches:", err);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
-  };
+  }, [userId, isAuthenticated]);
 
   useEffect(() => {
-    if (userId) {
-      loadWatches();
+    if (isAuthenticated) {
+      loadWatches(true);
     }
-  }, [userId]);
+  }, [isAuthenticated, loadWatches]);
+
+  // Live polling (every 5 seconds when tab is active)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        loadWatches(false);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated, loadWatches]);
 
   const filteredWatches = watches.filter((w) => {
     const matchesSearch =
@@ -48,12 +70,23 @@ export default function WatchesPage() {
     return matchesSearch && matchesHealth;
   });
 
+  if (userLoading || (!isAuthenticated && userLoading)) {
+    return (
+      <div className="flex-1 flex items-center justify-center min-h-[60vh]">
+        <div className="flex flex-col items-center gap-3">
+          <Radar className="w-8 h-8 text-radar-cyan animate-spin" />
+          <p className="text-xs text-slate-400 font-mono">Loading watches...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col min-h-full">
       <Header
         title="Active Radar Watches"
         subtitle="Manage all persistent web scraping and threshold triggers"
-        onRefresh={loadWatches}
+        onRefresh={() => loadWatches(true)}
       />
 
       <div className="flex-1 p-6 md:p-8 space-y-6 max-w-7xl mx-auto w-full">
@@ -95,7 +128,7 @@ export default function WatchesPage() {
         </div>
 
         {/* Watches Grid */}
-        {loading || userLoading ? (
+        {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {[1, 2, 3, 4, 5, 6].map((i) => (
               <div
@@ -125,7 +158,7 @@ export default function WatchesPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {filteredWatches.map((watch) => (
-              <WatchCard key={watch.id} watch={watch} onRefresh={loadWatches} />
+              <WatchCard key={watch.id} watch={watch} onRefresh={() => loadWatches(false)} />
             ))}
           </div>
         )}

@@ -34,9 +34,12 @@ class User(Base):
 
     id: Mapped[str] = mapped_column(UUID_TYPE, primary_key=True, default=lambda: str(uuid.uuid4()))
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    auth_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     watches: Mapped[list["Watch"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+
 
 
 class Watch(Base):

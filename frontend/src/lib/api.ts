@@ -1,5 +1,6 @@
 import {
   AlertEvent,
+  AuthResponse,
   User,
   Watch,
   WatchOverview,
@@ -13,6 +14,8 @@ import {
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
+const TOKEN_STORAGE_KEY = "web_radar_auth_token";
+
 class ApiError extends Error {
   status: number;
   data: any;
@@ -22,6 +25,28 @@ class ApiError extends Error {
     this.name = "ApiError";
     this.status = status;
     this.data = data;
+  }
+}
+
+function getStoredToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return localStorage.getItem(TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function setStoredToken(token: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (token) {
+      localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    } else {
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
+    }
+  } catch (err) {
+    console.error("Failed to set auth token in storage", err);
   }
 }
 
@@ -36,10 +61,16 @@ async function request<T>(
   const isIdempotentGet = method === "GET";
   const maxRetries = isIdempotentGet ? 2 : 0;
 
-  const headers = {
+  const token = getStoredToken();
+
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(options.headers || {}),
+    ...(options.headers as Record<string, string> || {}),
   };
+
+  if (token && !headers["Authorization"]) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
 
   let lastError: any = null;
 
@@ -108,8 +139,19 @@ async function request<T>(
 }
 
 export const api = {
+  getToken: getStoredToken,
+  setToken: setStoredToken,
+
   /**
-   * Ensure a user exists by email, returning the persistent User record.
+   * Fetch currently authenticated user session from backend.
+   */
+  async getMe(): Promise<User> {
+    return request<User>("/v1/auth/me");
+  },
+
+
+  /**
+   * Ensure a user exists (legacy fallback).
    */
   async ensureUser(email: string = "demo@webradar.io"): Promise<User> {
     return request<User>("/v1/users/ensure", {
@@ -152,10 +194,9 @@ export const api = {
   /**
    * List all Watches for the current user (summary cards with latest values).
    */
-  async getWatches(userId: string): Promise<WatchSummary[]> {
-    return request<WatchSummary[]>(
-      `/v1/watches?user_id=${encodeURIComponent(userId)}`
-    );
+  async getWatches(userId?: string): Promise<WatchSummary[]> {
+    const query = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
+    return request<WatchSummary[]>(`/v1/watches${query}`);
   },
 
   /**
@@ -171,12 +212,13 @@ export const api = {
    * Retrieve global cross-watch activity feed.
    */
   async getActivity(
-    userId: string,
+    userId?: string,
     limit: number = 50
   ): Promise<AlertEvent[]> {
-    return request<AlertEvent[]>(
-      `/v1/activity?user_id=${encodeURIComponent(userId)}&limit=${limit}`
-    );
+    const query = userId
+      ? `?user_id=${encodeURIComponent(userId)}&limit=${limit}`
+      : `?limit=${limit}`;
+    return request<AlertEvent[]>(`/v1/activity${query}`);
   },
 
   /**

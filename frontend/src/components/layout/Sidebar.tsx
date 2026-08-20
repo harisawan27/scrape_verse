@@ -12,13 +12,15 @@ import {
   Database,
   Cloud,
   Sparkles,
+  LogOut,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useUser } from "../../lib/userContext";
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { user } = useUser();
+  const { user, signOut } = useUser();
+
 
   const navItems = [
     {
@@ -145,22 +147,33 @@ export function Sidebar() {
 
       {/* User Session Footer */}
       <div className="p-4 border-t border-space-700/50 bg-space-950/40">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="h-8 w-8 rounded-lg bg-space-800 border border-space-700 flex items-center justify-center text-xs font-bold text-slate-300">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 overflow-hidden flex-1 min-w-0">
+            <div className="h-8 w-8 rounded-lg bg-space-800 border border-space-700 flex items-center justify-center text-xs font-bold text-cyan-400 shrink-0">
               {user ? user.email.slice(0, 2).toUpperCase() : "WR"}
             </div>
-            <div className="overflow-hidden">
+            <div className="overflow-hidden min-w-0">
               <p className="text-xs font-medium text-white truncate">
                 {user ? user.email : "Connecting..."}
               </p>
-              <p className="text-[10px] text-slate-400 font-mono">
-                Authoritative Mode
+              <p className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                Authenticated
               </p>
             </div>
           </div>
+          {user && (
+            <button
+              onClick={signOut}
+              title="Sign Out"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-950/30 border border-transparent hover:border-red-900/40 transition-colors shrink-0"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
+
     </aside>
   );
 }

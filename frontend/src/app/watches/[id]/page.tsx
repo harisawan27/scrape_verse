@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -12,6 +12,7 @@ import {
   Layers,
   Database,
   Cpu,
+  Radar,
 } from "lucide-react";
 import { Header } from "../../../components/layout/Header";
 import { WatchDetailHero } from "../../../components/watch-detail/WatchDetailHero";
@@ -21,11 +22,13 @@ import { RunHistory } from "../../../components/watch-detail/RunHistory";
 import { WatchControlsModal } from "../../../components/watch-detail/WatchControlsModal";
 import { WatchOverview, AlertEvent, WatchRun } from "../../../types";
 import { api } from "../../../lib/api";
+import { useUser } from "../../../lib/userContext";
 
 export default function WatchDetailPage() {
   const params = useParams();
   const router = useRouter();
   const watchId = params.id as string;
+  const { isAuthenticated, loading: userLoading } = useUser();
 
   const [overview, setOverview] = useState<WatchOverview | null>(null);
   const [runs, setRuns] = useState<WatchRun[]>([]);
@@ -34,15 +37,21 @@ export default function WatchDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [controlsOpen, setControlsOpen] = useState<boolean>(false);
 
-  const loadWatchOverview = async () => {
-    if (!watchId) return;
+  // Protect route
+  useEffect(() => {
+    if (!userLoading && !isAuthenticated) {
+      router.replace("/sign-in");
+    }
+  }, [isAuthenticated, userLoading, router]);
+
+  const loadWatchOverview = useCallback(async (showLoading = true) => {
+    if (!watchId || !isAuthenticated) return;
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       setError(null);
       const res = await api.getWatchOverview(watchId);
       setOverview(res);
 
-      // Also gather full runs if needed
       if (res.latest_run) {
         setRuns([res.latest_run]);
       }
@@ -51,17 +60,54 @@ export default function WatchDetailPage() {
       }
     } catch (err: any) {
       console.error("Failed to load watch overview:", err);
-      setError(err?.message || "Failed to load watch details");
+      if (err?.status === 404) {
+        setError("This watch does not exist or you do not have permission to view it.");
+      } else {
+        setError(err?.message || "Failed to load watch details");
+      }
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
-  };
+  }, [watchId, isAuthenticated]);
 
   useEffect(() => {
-    loadWatchOverview();
-  }, [watchId]);
+    if (isAuthenticated) {
+      loadWatchOverview(true);
+    }
+  }, [isAuthenticated, loadWatchOverview]);
 
-  if (loading) {
+  // Live polling: 3s if running/repairing, 8s if healthy
+  useEffect(() => {
+    if (!isAuthenticated || !overview) return;
+
+    const isDynamic =
+      overview.health_status === "running" ||
+      overview.health_status === "repairing" ||
+      !!overview.active_repair;
+
+    const pollIntervalMs = isDynamic ? 3000 : 8000;
+
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        loadWatchOverview(false);
+      }
+    }, pollIntervalMs);
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated, overview, loadWatchOverview]);
+
+  if (userLoading || (!isAuthenticated && userLoading)) {
+    return (
+      <div className="flex-1 flex items-center justify-center min-h-[60vh]">
+        <div className="flex flex-col items-center gap-3">
+          <Radar className="w-8 h-8 text-radar-cyan animate-spin" />
+          <p className="text-xs text-slate-400 font-mono">Restoring Web Radar session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading && !overview) {
     return (
       <div className="flex-1 flex flex-col min-h-full">
         <Header title="Watch Overview" />
@@ -107,101 +153,66 @@ export default function WatchDetailPage() {
     <div className="flex-1 flex flex-col min-h-full">
       <Header
         title={overview.watch.title}
-        subtitle={`Domain: ${overview.watch.url.replace(/^https?:\/\//, "").split("/")[0]}`}
-        onRefresh={loadWatchOverview}
+        subtitle={`Monitoring target: ${overview.watch.url}`}
+        onRefresh={() => loadWatchOverview(true)}
       />
 
       <div className="flex-1 p-6 md:p-8 space-y-8 max-w-7xl mx-auto w-full">
-        {/* Back Link */}
-        <div>
+        {/* Navigation Breadcrumb */}
+        <div className="flex items-center gap-2 text-xs text-slate-400">
           <Link
             href="/watches"
-            className="inline-flex items-center gap-2 text-xs font-medium text-slate-400 hover:text-white transition-colors"
+            className="hover:text-radar-cyan flex items-center gap-1 transition-colors"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            <span>Back to All Watches</span>
+            <span>All Watches</span>
           </Link>
+          <span>/</span>
+          <span className="text-slate-200 truncate">{overview.watch.title}</span>
         </div>
 
-        {/* 1. Hero State & Primary Metrics */}
+        {/* 1. Hero Overview Card */}
         <WatchDetailHero
           overview={overview}
-          onRefresh={loadWatchOverview}
+          onRefresh={() => loadWatchOverview(false)}
           onOpenControls={() => setControlsOpen(true)}
         />
 
-        {/* 2. Self-Healing Scraper Drift Banner (Prominent) */}
-        {overview.active_repair && (
-          <SelfHealingBanner repair={overview.active_repair} />
-        )}
+        {/* 2. Self-Healing Banner */}
+        <SelfHealingBanner
+          repair={overview.active_repair}
+          collectorId={overview.watch.monitoring_spec?.collector_id}
+        />
 
-        {/* 3. Detail Columns: Semantic Events Timeline & Execution History */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left 2 Cols: Semantic Changes Timeline */}
-          <div className="lg:col-span-2 space-y-4">
-            <div className="flex items-center justify-between border-b border-space-700/60 pb-3">
-              <div className="flex items-center gap-2">
-                <Activity className="h-4 w-4 text-radar-cyan" />
-                <h3 className="text-base font-bold text-white">
-                  Semantic Change Log
-                </h3>
+
+        {/* 3. Diagnostic Two-Column Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+          {/* Left Column: Semantic Change Events */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 px-1">
+              <div className="flex items-center justify-center h-6 w-6 rounded-lg bg-radar-cyan/15 text-radar-cyan">
+                <Activity className="h-3.5 w-3.5" />
               </div>
-              <span className="text-xs text-slate-400 font-mono">
-                {overview.stats.total_events} Event{overview.stats.total_events === 1 ? "" : "s"}
-              </span>
+              <h3 className="text-base font-bold text-white tracking-tight">
+                Semantic Change Events
+              </h3>
             </div>
-
-            <SemanticTimeline
-              events={overview.latest_event ? [overview.latest_event] : []}
-            />
+            <SemanticTimeline events={alerts} />
           </div>
 
-          {/* Right Col: Run History & Collector Telemetry */}
-          <div className="space-y-6">
-            {/* Run Execution History */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between border-b border-space-700/60 pb-3">
-                <div className="flex items-center gap-2">
-                  <History className="h-4 w-4 text-radar-emerald" />
-                  <h3 className="text-base font-bold text-white">
-                    Run History
-                  </h3>
-                </div>
-                <span className="text-xs text-slate-400 font-mono">
-                  {overview.stats.total_runs} Runs
-                </span>
+          {/* Right Column: Immutable Run History */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 px-1">
+              <div className="flex items-center justify-center h-6 w-6 rounded-lg bg-radar-indigo/15 text-radar-indigo">
+                <History className="h-3.5 w-3.5" />
               </div>
-
-              <RunHistory
-                runs={overview.latest_run ? [overview.latest_run] : []}
-              />
+              <h3 className="text-base font-bold text-white tracking-tight">
+                Execution Run History
+              </h3>
             </div>
-
-            {/* Collector & Technical Boundaries Card */}
-            <div className="p-4 rounded-2xl bg-space-900/60 border border-space-750 space-y-3">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-300">
-                <Cpu className="h-4 w-4 text-radar-indigo" />
-                <span>Integration Boundary</span>
-              </div>
-
-              <div className="space-y-2 text-xs font-mono">
-                <div className="flex items-center justify-between p-2 rounded-lg bg-space-950/60 border border-space-800">
-                  <span className="text-slate-400">Scraper Studio ID:</span>
-                  <span className="text-radar-cyan truncate max-w-[160px]">
-                    {overview.watch.monitoring_spec?.collector_id || "c_msz0zrtw29tjzhzakl"}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between p-2 rounded-lg bg-space-950/60 border border-space-800">
-                  <span className="text-slate-400">Database Engine:</span>
-                  <span className="text-emerald-400">Neon PostgreSQL</span>
-                </div>
-                <div className="flex items-center justify-between p-2 rounded-lg bg-space-950/60 border border-space-800">
-                  <span className="text-slate-400">Authoritative Source:</span>
-                  <span className="text-white">Server-Side Worker</span>
-                </div>
-              </div>
-            </div>
+            <RunHistory runs={runs} />
           </div>
+
         </div>
       </div>
 
@@ -210,11 +221,16 @@ export default function WatchDetailPage() {
         overview={overview}
         isOpen={controlsOpen}
         onClose={() => setControlsOpen(false)}
-        onUpdated={loadWatchOverview}
+        onUpdated={() => {
+          setControlsOpen(false);
+          loadWatchOverview(false);
+        }}
         onDeleted={() => {
+          setControlsOpen(false);
           router.push("/watches");
         }}
       />
+
     </div>
   );
 }

@@ -30,19 +30,19 @@ class WatchRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_user(self, data: UserCreate) -> User:
-        user = User(email=data.email)
+    def create_user(self, data: UserCreate, auth_id: str | None = None) -> User:
+        user = User(email=data.email, auth_id=auth_id or data.auth_id)
         self.db.add(user)
         self.db.commit()
         self.db.refresh(user)
         return user
+
 
     def get_user(self, user_id: str) -> User | None:
         return self.db.get(User, user_id)
 
     def get_user_by_email(self, email: str) -> User | None:
         return self.db.scalar(select(User).where(User.email == email))
-
 
     def create(self, data: WatchCreate) -> Watch:
         watch = Watch(
@@ -58,9 +58,12 @@ class WatchRepository:
         self.db.commit()
         return self.get(watch.id)  # type: ignore[return-value]
 
-    def get(self, watch_id: str) -> Watch | None:
+    def get(self, watch_id: str, user_id: str | None = None) -> Watch | None:
         statement = select(Watch).options(joinedload(Watch.schedule)).where(Watch.id == watch_id)
+        if user_id is not None:
+            statement = statement.where(Watch.user_id == user_id)
         return self.db.scalar(statement)
+
 
     def list_for_user(self, user_id: str) -> list[Watch]:
         statement = (
@@ -226,11 +229,12 @@ class WatchRepository:
         watches = self.list_for_user(user_id)
         return [self.build_watch_summary(w) for w in watches]
 
-    def get_watch_overview(self, watch_id: str) -> WatchOverviewRead | None:
+    def get_watch_overview(self, watch_id: str, user_id: str | None = None) -> WatchOverviewRead | None:
         """Construct the aggregate WatchOverviewRead for detail view."""
-        watch = self.get(watch_id)
+        watch = self.get(watch_id, user_id=user_id)
         if watch is None:
             return None
+
 
         runs = self.list_runs_for_watch(watch.id, limit=20)
         repairs = self.list_repairs_for_watch(watch.id, limit=10)

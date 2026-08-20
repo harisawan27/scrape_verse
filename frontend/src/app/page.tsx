@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Header } from "../components/layout/Header";
 import { CreateWatchHero } from "../components/dashboard/CreateWatchHero";
 import { WhileYouWereAway } from "../components/dashboard/WhileYouWereAway";
@@ -12,37 +13,59 @@ import { api } from "../lib/api";
 import { Eye, Filter, Loader2, Radar, Sparkles } from "lucide-react";
 
 export default function DashboardPage() {
-  const { userId, loading: userLoading } = useUser();
+  const router = useRouter();
+  const { user, userId, isAuthenticated, loading: userLoading } = useUser();
   const [watches, setWatches] = useState<WatchSummary[]>([]);
   const [activity, setActivity] = useState<AlertEvent[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [filterHealth, setFilterHealth] = useState<string>("all");
 
-  const loadData = async () => {
-    if (!userId) return;
+  // Protect route
+  useEffect(() => {
+    if (!userLoading && !isAuthenticated) {
+      router.replace("/sign-in");
+    }
+  }, [isAuthenticated, userLoading, router]);
+
+  const loadData = useCallback(async (showLoading = true) => {
+    if (!userId && !isAuthenticated) return;
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const [watchesRes, activityRes] = await Promise.all([
-        api.getWatches(userId).catch(() => []),
-        api.getActivity(userId, 10).catch(() => []),
+        api.getWatches(userId || undefined).catch(() => []),
+        api.getActivity(userId || undefined, 10).catch(() => []),
       ]);
       setWatches(watchesRes);
       setActivity(activityRes);
     } catch (err) {
       console.error("Failed to load dashboard data:", err);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
-  };
+  }, [userId, isAuthenticated]);
 
+  // Initial load
   useEffect(() => {
-    if (userId) {
-      loadData();
+    if (isAuthenticated) {
+      loadData(true);
     }
-  }, [userId]);
+  }, [isAuthenticated, loadData]);
+
+  // Live background polling (5 seconds for watches, 8 seconds for activity)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        loadData(false);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated, loadData]);
 
   const handleWatchCreated = (newWatch: Watch) => {
-    loadData();
+    loadData(false);
   };
 
   const filteredWatches = watches.filter((w) => {
@@ -50,12 +73,23 @@ export default function DashboardPage() {
     return w.health_status === filterHealth;
   });
 
+  if (userLoading || (!isAuthenticated && userLoading)) {
+    return (
+      <div className="flex-1 flex items-center justify-center min-h-[60vh]">
+        <div className="flex flex-col items-center gap-3">
+          <Radar className="w-8 h-8 text-radar-cyan animate-spin" />
+          <p className="text-xs text-slate-400 font-mono">Restoring Web Radar session...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col min-h-full">
       <Header
         title="Monitoring Command Center"
         subtitle="Autonomous web observation & semantic change intelligence"
-        onRefresh={loadData}
+        onRefresh={() => loadData(true)}
       />
 
       <div className="flex-1 p-6 md:p-8 space-y-8 max-w-7xl mx-auto w-full">
@@ -107,7 +141,7 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {loading || userLoading ? (
+          {loading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {[1, 2, 3].map((i) => (
                 <div
@@ -137,7 +171,7 @@ export default function DashboardPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {filteredWatches.map((watch) => (
-                <WatchCard key={watch.id} watch={watch} onRefresh={loadData} />
+                <WatchCard key={watch.id} watch={watch} onRefresh={() => loadData(false)} />
               ))}
             </div>
           )}

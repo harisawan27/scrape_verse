@@ -20,6 +20,8 @@ def create_user_and_watch(client, url="https://www.daraz.pk/products/office-chai
         user_res = client.post("/v1/users", json={"email": f"user-{uuid.uuid4()}@example.com"})
         user_id = user_res.json()["id"]
 
+    client.headers["X-User-Id"] = user_id
+
     watch_payload = {
         "user_id": user_id,
         "url": url,
@@ -41,6 +43,7 @@ def create_user_and_watch(client, url="https://www.daraz.pk/products/office-chai
     }
     watch_res = client.post("/v1/watches", json=watch_payload)
     return user_id, watch_res.json()
+
 
 
 
@@ -222,7 +225,7 @@ def test_watch_overview_aggregates_snapshot_run_event_and_stats(client):
         )
 
     # Call single overview endpoint
-    resp = client.get(f"/v1/watches/{watch_id}/overview")
+    resp = client.get(f"/v1/watches/{watch_id}/overview", headers={"X-User-Id": user_id})
     assert resp.status_code == 200
     overview = resp.json()
     assert overview["watch"]["id"] == watch_id
@@ -267,7 +270,7 @@ def test_global_activity_feed_cross_watch_newest_first(client):
         db.add_all([alert1, alert2])
         db.commit()
 
-    resp = client.get(f"/v1/activity?user_id={user_id}&limit=10")
+    resp = client.get(f"/v1/activity?user_id={user_id}&limit=10", headers={"X-User-Id": user_id})
     assert resp.status_code == 200
     feed = resp.json()
     assert len(feed) == 2
@@ -284,11 +287,13 @@ def test_global_activity_feed_cross_watch_newest_first(client):
 def test_watch_update_cadence_and_status(client):
     user_id, watch = create_user_and_watch(client)
     watch_id = watch["id"]
+    headers = {"X-User-Id": user_id}
 
     # Update cadence from custom to daily
     resp = client.patch(
         f"/v1/watches/{watch_id}",
         json={"schedule": {"cadence": "daily", "timezone": "Asia/Karachi"}},
+        headers=headers,
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -296,17 +301,17 @@ def test_watch_update_cadence_and_status(client):
     assert data["schedule"]["timezone"] == "Asia/Karachi"
 
     # Update status to paused -> schedule disabled
-    resp_pause = client.patch(f"/v1/watches/{watch_id}", json={"status": "paused"})
+    resp_pause = client.patch(f"/v1/watches/{watch_id}", json={"status": "paused"}, headers=headers)
     assert resp_pause.status_code == 200
     assert resp_pause.json()["status"] == "paused"
     assert resp_pause.json()["schedule"]["enabled"] is False
 
     # Check summary card reflects paused
-    resp_sum = client.get(f"/v1/watches?user_id={user_id}")
+    resp_sum = client.get(f"/v1/watches?user_id={user_id}", headers=headers)
     assert resp_sum.json()[0]["health_status"] == "paused"
 
     # Reactivate
-    resp_act = client.patch(f"/v1/watches/{watch_id}", json={"status": "active"})
+    resp_act = client.patch(f"/v1/watches/{watch_id}", json={"status": "active"}, headers=headers)
     assert resp_act.status_code == 200
     assert resp_act.json()["status"] == "active"
     assert resp_act.json()["schedule"]["enabled"] is True
@@ -315,6 +320,7 @@ def test_watch_update_cadence_and_status(client):
 def test_watch_update_monitoring_rules(client):
     user_id, watch = create_user_and_watch(client)
     watch_id = watch["id"]
+    headers = {"X-User-Id": user_id}
 
     new_spec = {
         "vertical": "product",
@@ -325,11 +331,12 @@ def test_watch_update_monitoring_rules(client):
             {"type": "back_in_stock", "field": "availability"},
         ],
     }
-    resp = client.patch(f"/v1/watches/{watch_id}", json={"monitoring_spec": new_spec})
+    resp = client.patch(f"/v1/watches/{watch_id}", json={"monitoring_spec": new_spec}, headers=headers)
     assert resp.status_code == 200
     data = resp.json()
     assert len(data["monitoring_spec"]["rules"]) == 2
     assert data["monitoring_spec"]["rules"][0]["value"] == 1999.0
+
 
 
 def test_cors_preflight_and_headers(client):
