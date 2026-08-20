@@ -21,6 +21,10 @@ export function Sidebar() {
   const pathname = usePathname();
   const { user, signOut } = useUser();
 
+  // Hide sidebar on auth pages or when unauthenticated
+  if (pathname === "/sign-in" || pathname === "/sign-up" || !user) {
+    return null;
+  }
 
   const navItems = [
     {
@@ -29,6 +33,7 @@ export function Sidebar() {
       icon: LayoutDashboard,
       active: pathname === "/",
     },
+
     {
       label: "Active Watches",
       href: "/watches",
