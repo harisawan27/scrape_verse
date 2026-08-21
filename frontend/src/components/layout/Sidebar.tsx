@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -13,18 +13,55 @@ import {
   Cloud,
   Sparkles,
   LogOut,
+  Settings,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useUser } from "../../lib/userContext";
 
+function GoogleIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24">
+      <path
+        fill="#4285F4"
+        d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.27 21.43 7.35 24 12 24Z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 10.03 0 12s.45 3.82 1.25 5.42l4.03-3.15Z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.35 0 3.27 2.57 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98Z"
+      />
+    </svg>
+  );
+}
+
 export function Sidebar() {
   const pathname = usePathname();
-  const { user, isAuthenticated, loading, signOut } = useUser();
+  const { user, isAuthenticated, loading, linkGoogleAccount, signOut } = useUser();
+  const [linkingGoogle, setLinkingGoogle] = useState(false);
 
   // Hide sidebar on auth pages or when completely unauthenticated
   if (pathname === "/sign-in" || pathname === "/sign-up" || (!loading && !isAuthenticated)) {
     return null;
   }
+
+  const handleLinkGoogle = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      setLinkingGoogle(true);
+      await linkGoogleAccount();
+    } catch (err) {
+      console.error("Failed to initiate Google link:", err);
+      setLinkingGoogle(false);
+    }
+  };
 
   const navItems = [
     {
@@ -45,7 +82,21 @@ export function Sidebar() {
       icon: Activity,
       active: pathname.startsWith("/activity"),
     },
+    {
+      label: "Settings",
+      href: "/settings",
+      icon: Settings,
+      active: pathname.startsWith("/settings"),
+    },
   ];
+
+  const displayName = user?.name || user?.email?.split("@")[0] || "User";
+  const userInitials = displayName
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   return (
     <aside className="w-64 flex-shrink-0 bg-space-900/90 border-r border-space-700/60 flex flex-col justify-between h-screen sticky top-0 z-30 backdrop-blur-md">
@@ -142,23 +193,37 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* User Session Footer */}
-      <div className="p-4 border-t border-space-700/50 bg-space-950/40">
+      {/* User Session Footer — connects directly to /settings */}
+      <div className="p-4 border-t border-space-700/50 bg-space-950/40 space-y-2.5">
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5 overflow-hidden flex-1 min-w-0">
-            <div className="h-8 w-8 rounded-lg bg-space-800 border border-space-700 flex items-center justify-center text-xs font-bold text-cyan-400 shrink-0">
-              {user?.email ? user.email.slice(0, 2).toUpperCase() : "WR"}
-            </div>
+          <Link
+            href="/settings"
+            className="flex items-center gap-2.5 overflow-hidden flex-1 min-w-0 group hover:opacity-90 transition-opacity"
+            title="Open Account Settings"
+          >
+            {user?.image ? (
+              <div className="h-8 w-8 rounded-lg overflow-hidden border border-cyan-400/50 shrink-0">
+                <img
+                  src={user.image}
+                  alt={displayName}
+                  className="h-full w-full object-cover"
+                />
+              </div>
+            ) : (
+              <div className="h-8 w-8 rounded-lg bg-space-800 border border-space-700 flex items-center justify-center text-xs font-bold text-cyan-400 shrink-0 group-hover:border-cyan-400 transition-colors">
+                {userInitials || "WR"}
+              </div>
+            )}
             <div className="overflow-hidden min-w-0">
-              <p className="text-xs font-medium text-white truncate">
-                {user?.email || "Authenticated User"}
+              <p className="text-xs font-medium text-white truncate group-hover:text-cyan-400 transition-colors">
+                {displayName}
               </p>
               <p className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                Authenticated
+                Settings
               </p>
             </div>
-          </div>
+          </Link>
           {isAuthenticated && (
             <button
               onClick={signOut}
@@ -169,6 +234,20 @@ export function Sidebar() {
             </button>
           )}
         </div>
+
+        {/* Connect / Link Google Button */}
+        {isAuthenticated && (
+          <button
+            type="button"
+            onClick={handleLinkGoogle}
+            disabled={linkingGoogle}
+            className="w-full flex items-center justify-center gap-2 py-1.5 px-2.5 rounded-lg bg-space-850 hover:bg-space-800 border border-space-700/70 text-slate-300 hover:text-white text-[11px] font-medium transition-all group cursor-pointer disabled:opacity-50"
+            title="Link Google account to enable 1-click Google Sign-In"
+          >
+            <GoogleIcon className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>{linkingGoogle ? "Connecting..." : "Connect Google"}</span>
+          </button>
+        )}
       </div>
     </aside>
   );

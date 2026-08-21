@@ -15,6 +15,9 @@ interface UserContextValue {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, name?: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
+  linkGoogleAccount: () => Promise<void>;
+  updateUserName: (name: string) => Promise<void>;
+  deleteAccount: () => Promise<void>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -29,6 +32,9 @@ const UserContext = createContext<UserContextValue>({
   signIn: async () => {},
   signUp: async () => {},
   signInWithGoogle: async () => {},
+  linkGoogleAccount: async () => {},
+  updateUserName: async () => {},
+  deleteAccount: async () => {},
   signOut: async () => {},
   refreshUser: async () => {},
 });
@@ -58,6 +64,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setTokenState] = useState<string | null>(null);
   const [loadingProfile, setLoadingProfile] = useState<boolean>(false);
+  const [initialSyncDone, setInitialSyncDone] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   // Sync session changes reactively
@@ -78,23 +85,31 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       try {
         setLoadingProfile(true);
         const me = await api.getMe();
-        setUser(me);
+        setUser({
+          ...me,
+          name: sessionUser.name || me.name || null,
+          image: sessionUser.image || me.image || null,
+        });
       } catch {
         // Fallback to Neon Auth session data if backend profile is still provisioning
         setUser({
           id: sessionUser.id,
           email: sessionUser.email,
+          name: sessionUser.name || null,
+          image: sessionUser.image || null,
           auth_id: sessionUser.id,
           created_at: new Date().toISOString(),
         });
       } finally {
         setLoadingProfile(false);
+        setInitialSyncDone(true);
       }
     } else {
       api.setToken(null);
       setUser(null);
       setTokenState(null);
       setLoadingProfile(false);
+      setInitialSyncDone(true);
     }
   }, [sessionData, sessionPending]);
 
@@ -117,11 +132,17 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       }
       try {
         const me = await api.getMe();
-        setUser(me);
+        setUser({
+          ...me,
+          name: sessionUser.name || me.name || null,
+          image: sessionUser.image || me.image || null,
+        });
       } catch {
         setUser({
           id: sessionUser.id,
           email: sessionUser.email,
+          name: sessionUser.name || null,
+          image: sessionUser.image || null,
           auth_id: sessionUser.id,
           created_at: new Date().toISOString(),
         });
@@ -195,6 +216,66 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const linkGoogleAccount = async () => {
+    setError(null);
+    try {
+      const res = await authClient.linkSocial({
+        provider: "google",
+        callbackURL: "/settings",
+      });
+
+      if (res?.error) {
+        const msg = extractErrorMessage(res.error, "Failed to link Google account");
+        throw new Error(msg);
+      }
+    } catch (err: unknown) {
+      const msg = extractErrorMessage(err, "Failed to link Google account");
+      setError(msg);
+      throw new Error(msg);
+    }
+  };
+
+  const updateUserName = async (name: string) => {
+    setError(null);
+    try {
+      const res = await authClient.updateUser({
+        name: name.trim(),
+      });
+
+      if (res?.error) {
+        const msg = extractErrorMessage(res.error, "Failed to update name");
+        throw new Error(msg);
+      }
+
+      await refreshUser();
+    } catch (err: unknown) {
+      const msg = extractErrorMessage(err, "Failed to update name");
+      setError(msg);
+      throw new Error(msg);
+    }
+  };
+
+  const deleteAccount = async () => {
+    setError(null);
+    try {
+      const res = await authClient.deleteUser().catch(() => null);
+      if (res?.error) {
+        const msg = extractErrorMessage(res.error, "Failed to delete account");
+        throw new Error(msg);
+      }
+    } finally {
+      api.setToken(null);
+      setUser(null);
+      setTokenState(null);
+      if (refetch) {
+        await refetch();
+      }
+      if (typeof window !== "undefined") {
+        window.location.href = "/sign-in";
+      }
+    }
+  };
+
   const signOut = async () => {
     try {
       await authClient.signOut().catch(() => {});
@@ -217,19 +298,29 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       ? {
           id: sessionData.user.id,
           email: sessionData.user.email,
+          name: sessionData.user.name || null,
+          image: sessionData.user.image || null,
           auth_id: sessionData.user.id,
           created_at: new Date().toISOString(),
         }
       : null);
 
-  const isAuthenticated = !!effectiveUser || (!!sessionData?.user && !sessionPending);
-  const loading = sessionPending;
-  const effectiveUserId = effectiveUser?.id || null;
+  const mergedUser: User | null = effectiveUser
+    ? {
+        ...effectiveUser,
+        name: sessionData?.user?.name || effectiveUser.name || null,
+        image: sessionData?.user?.image || effectiveUser.image || null,
+      }
+    : null;
+
+  const isAuthenticated = !!mergedUser || (!!sessionData?.user && !sessionPending);
+  const loading = !initialSyncDone || sessionPending;
+  const effectiveUserId = mergedUser?.id || null;
 
   return (
     <UserContext.Provider
       value={{
-        user: effectiveUser,
+        user: mergedUser,
         userId: effectiveUserId,
         token,
         isAuthenticated,
@@ -238,6 +329,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         signIn,
         signUp,
         signInWithGoogle,
+        linkGoogleAccount,
+        updateUserName,
+        deleteAccount,
         signOut,
         refreshUser,
       }}

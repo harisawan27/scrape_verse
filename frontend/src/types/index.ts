@@ -182,6 +182,8 @@ export interface WatchUpdateInput {
 export interface User {
   id: string;
   email: string;
+  name?: string | null;
+  image?: string | null;
   auth_id?: string;
   created_at: string;
 }
