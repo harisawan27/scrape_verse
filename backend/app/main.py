@@ -376,12 +376,21 @@ def preview_watch_plan(
     current_user: User | None = Depends(get_optional_user),
 ):
     """Translate natural language instruction into a validated WatchPlan preview without persisting."""
-    planner = NaturalLanguageWatchPlanner()
-    return planner.preview_plan(
-        message=req.message,
-        url=req.url,
-        timezone=req.timezone,
-    )
+    try:
+        planner = NaturalLanguageWatchPlanner()
+        return planner.preview_plan(
+            message=req.message,
+            url=req.url,
+            timezone=req.timezone,
+        )
+    except Exception as exc:
+        logger.exception("Failed to preview watch plan: %s", exc)
+        return WatchPlanPreviewResponse(
+            status="needs_clarification",
+            missing=["instruction"],
+            clarification_prompt="Could not parse monitoring instruction. Please specify a valid Daraz product URL and condition.",
+            message=str(exc),
+        )
 
 
 @app.post("/v1/watches/from-plan", response_model=WatchRead, status_code=status.HTTP_201_CREATED)
@@ -404,5 +413,8 @@ def create_watch_from_plan(
         logger.info("Watch created from AI plan: %s ('%s') for user %s", watch.id, watch.title, target_user_id)
         return watch
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Failed to create watch from plan: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Failed to create watch: {exc}") from exc
 

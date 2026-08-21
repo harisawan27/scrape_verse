@@ -110,10 +110,10 @@ class GeminiPlannerClient:
         url: str | None = None,
         default_timezone: str = "Asia/Karachi",
     ) -> RawPlannerOutput:
-        model = self.model_name if self.model_name.startswith("models/") else f"models/{self.model_name}"
-        endpoint = f"{self.base_url}/{model}:generateContent"
-        params = {"key": self.api_key}
-
+        candidate_models = [self.model_name]
+        for fallback_m in ["gemini-3.1-flash-lite", "gemini-3.6-flash", "gemini-flash-latest"]:
+            if fallback_m not in candidate_models and f"models/{fallback_m}" not in candidate_models:
+                candidate_models.append(fallback_m)
 
         user_content = (
             f"<USER_INSTRUCTION>\n{user_message}\n</USER_INSTRUCTION>\n"
@@ -137,25 +137,34 @@ class GeminiPlannerClient:
             },
         }
 
-        try:
-            response = self._client.post(endpoint, params=params, json=payload)
-        except httpx.RequestError as exc:
-            raise LLMPlannerError(f"Network error communicating with Gemini API: {exc}") from exc
+        last_error: Exception | None = None
+        for candidate in candidate_models:
+            model = candidate if candidate.startswith("models/") else f"models/{candidate}"
+            endpoint = f"{self.base_url}/{model}:generateContent"
+            params = {"key": self.api_key}
 
-        if response.status_code != 200:
-            raise LLMPlannerError(f"Gemini API returned error HTTP {response.status_code}: {response.text}")
+            try:
+                response = self._client.post(endpoint, params=params, json=payload)
+                if response.status_code == 200:
+                    data = response.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        content_text = candidates[0]["content"]["parts"][0]["text"]
+                        parsed_json = json.loads(content_text)
+                        return _parse_raw_planner_dict(parsed_json, fallback_url=url, default_timezone=default_timezone)
+                elif response.status_code == 404:
+                    logger.info("Gemini model %s not available (404), trying next candidate model...", candidate)
+                    continue
+                else:
+                    last_error = LLMPlannerError(f"Gemini API returned error HTTP {response.status_code}: {response.text}")
+            except httpx.RequestError as exc:
+                last_error = LLMPlannerError(f"Network error communicating with Gemini API: {exc}")
+            except Exception as exc:
+                last_error = LLMPlannerError(f"Failed to parse Gemini output: {exc}")
 
-        try:
-            data = response.json()
-            candidates = data.get("candidates", [])
-            if not candidates:
-                raise LLMPlannerError("Gemini API returned 0 candidates")
-
-            content_text = candidates[0]["content"]["parts"][0]["text"]
-            parsed_json = json.loads(content_text)
-            return _parse_raw_planner_dict(parsed_json, fallback_url=url, default_timezone=default_timezone)
-        except Exception as exc:
-            raise LLMPlannerError(f"Failed to parse Gemini output into structured plan: {exc}") from exc
+        if last_error:
+            raise last_error
+        raise LLMPlannerError("No Gemini candidate model succeeded in generating content.")
 
 
 class MockLLMPlannerClient:

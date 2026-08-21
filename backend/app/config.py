@@ -54,7 +54,7 @@ class Settings(BaseSettings):
         ),
     )
     gemini_model_name: str = Field(
-        default="gemini-2.5-flash",
+        default="gemini-3.1-flash-lite",
         validation_alias=AliasChoices("gemini_model_name", "gemini_model", "model_name"),
     )
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"

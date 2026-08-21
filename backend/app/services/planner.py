@@ -321,11 +321,24 @@ class NaturalLanguageWatchPlanner:
     ) -> WatchPlanPreviewResponse:
         """Interpret natural language request and return a previewable, validated WatchPlan."""
         tz_name = timezone or self.default_timezone
-        raw_output = self.llm_client.generate_plan(
-            user_message=message,
-            url=url,
-            default_timezone=tz_name,
-        )
+        try:
+            raw_output = self.llm_client.generate_plan(
+                user_message=message,
+                url=url,
+                default_timezone=tz_name,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Primary LLM planner failed (%s). Falling back to deterministic rule-based planner.",
+                exc,
+            )
+            fallback = MockLLMPlannerClient()
+            raw_output = fallback.generate_plan(
+                user_message=message,
+                url=url,
+                default_timezone=tz_name,
+            )
+
         return self.validator.validate_and_build_plan(
             raw_output,
             requested_url=url,
