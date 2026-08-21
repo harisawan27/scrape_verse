@@ -253,7 +253,10 @@ export default function SignUpPage() {
           {/* 3. Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+              <label
+                htmlFor="signup-email"
+                className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5"
+              >
                 Work Email Address
               </label>
               <div className="relative">
@@ -261,6 +264,8 @@ export default function SignUpPage() {
                   <Mail className="h-4 w-4" />
                 </div>
                 <input
+                  id="signup-email"
+                  name="email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -274,7 +279,10 @@ export default function SignUpPage() {
 
             {/* Password */}
             <div>
-              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+              <label
+                htmlFor="signup-password"
+                className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5"
+              >
                 Password
               </label>
               <div className="relative">
@@ -282,6 +290,8 @@ export default function SignUpPage() {
                   <Lock className="h-4 w-4" />
                 </div>
                 <input
+                  id="signup-password"
+                  name="password"
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -345,7 +355,10 @@ export default function SignUpPage() {
 
             {/* Confirm Password */}
             <div>
-              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+              <label
+                htmlFor="signup-confirm-password"
+                className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5"
+              >
                 Confirm Password
               </label>
               <div className="relative">
@@ -353,6 +366,8 @@ export default function SignUpPage() {
                   <Lock className="h-4 w-4" />
                 </div>
                 <input
+                  id="signup-confirm-password"
+                  name="confirmPassword"
                   type={showConfirmPassword ? "text" : "password"}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}

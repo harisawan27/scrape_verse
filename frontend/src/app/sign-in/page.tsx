@@ -58,16 +58,23 @@ function SignInForm() {
   useEffect(() => {
     const urlError = searchParams?.get("error");
     const urlErrorDesc = searchParams?.get("error_description");
+    const urlErrorCode = searchParams?.get("error_code") || searchParams?.get("code");
+    const urlMessage = searchParams?.get("message");
 
-    if (urlError) {
-      if (urlError === "account_not_linked" || urlError === "unable_to_link_account") {
+    if (urlError || urlErrorDesc || urlMessage) {
+      const errKey = (urlError || urlErrorCode || "").toLowerCase();
+      if (errKey.includes("account_not_linked") || errKey.includes("unable_to_link_account")) {
         setError(
-          "An account with this email was registered using email & password. Sign in with your password below, then click 'Connect Google' in the sidebar to link your Google login."
+          "An account with this email was registered using email & password. Sign in with your password below, then click 'Connect Google' in Settings to link your Google account."
         );
-      } else if (urlError === "access_denied") {
+      } else if (errKey.includes("state_invalid") || errKey.includes("invalid_state")) {
+        setError("OAuth state verification expired. Please try clicking 'Continue with Google' again.");
+      } else if (errKey.includes("access_denied")) {
         setError("Google authentication was cancelled.");
+      } else if (errKey.includes("domain") || errKey.includes("callback_url")) {
+        setError("OAuth domain verification error. Please ensure the domain is added to Neon Auth trusted domains.");
       } else {
-        setError(urlErrorDesc || `Google sign-in error: ${urlError}`);
+        setError(urlErrorDesc || urlMessage || `Google sign-in returned: ${urlError || urlErrorCode}`);
       }
     }
   }, [searchParams]);
@@ -180,10 +187,13 @@ function SignInForm() {
           </div>
         </div>
 
-        {/* 3. Email & Password Form */}
+        {/* 3. Email & Password Form with Explicit IDs and Autocomplete */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+            <label
+              htmlFor="signin-email"
+              className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5"
+            >
               Email Address
             </label>
             <div className="relative">
@@ -191,6 +201,8 @@ function SignInForm() {
                 <Mail className="h-4 w-4" />
               </div>
               <input
+                id="signin-email"
+                name="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -203,7 +215,10 @@ function SignInForm() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+            <label
+              htmlFor="signin-password"
+              className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5"
+            >
               Password
             </label>
             <div className="relative">
@@ -211,6 +226,8 @@ function SignInForm() {
                 <Lock className="h-4 w-4" />
               </div>
               <input
+                id="signin-password"
+                name="password"
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
