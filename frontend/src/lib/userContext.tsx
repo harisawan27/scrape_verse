@@ -211,14 +211,25 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const isAuthenticated = !!user || (!!sessionData?.user && !sessionPending);
-  const loading = sessionPending || (!!sessionData?.user && !user && loadingProfile);
-  const effectiveUserId = user?.id || sessionData?.user?.id || null;
+  const effectiveUser: User | null =
+    user ||
+    (sessionData?.user
+      ? {
+          id: sessionData.user.id,
+          email: sessionData.user.email,
+          auth_id: sessionData.user.id,
+          created_at: new Date().toISOString(),
+        }
+      : null);
+
+  const isAuthenticated = !!effectiveUser || (!!sessionData?.user && !sessionPending);
+  const loading = sessionPending;
+  const effectiveUserId = effectiveUser?.id || null;
 
   return (
     <UserContext.Provider
       value={{
-        user,
+        user: effectiveUser,
         userId: effectiveUserId,
         token,
         isAuthenticated,

@@ -19,10 +19,10 @@ import { useUser } from "../../lib/userContext";
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { user, signOut } = useUser();
+  const { user, isAuthenticated, loading, signOut } = useUser();
 
-  // Hide sidebar on auth pages or when unauthenticated
-  if (pathname === "/sign-in" || pathname === "/sign-up" || !user) {
+  // Hide sidebar on auth pages or when completely unauthenticated
+  if (pathname === "/sign-in" || pathname === "/sign-up" || (!loading && !isAuthenticated)) {
     return null;
   }
 
@@ -33,7 +33,6 @@ export function Sidebar() {
       icon: LayoutDashboard,
       active: pathname === "/",
     },
-
     {
       label: "Active Watches",
       href: "/watches",
@@ -59,64 +58,57 @@ export function Sidebar() {
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="text-base font-bold tracking-tight text-white">
+              <span className="font-extrabold text-base tracking-tight text-white group-hover:text-radar-cyan transition-colors">
                 Web Radar
               </span>
-              <span className="text-[10px] uppercase font-semibold tracking-wider px-1.5 py-0.5 rounded bg-radar-cyan/15 text-radar-cyan border border-radar-cyan/30">
-                MVP
+              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider bg-radar-cyan/15 text-radar-cyan border border-radar-cyan/30">
+                PRO
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 font-mono">
-              Persistent Web Monitoring
-            </p>
+            <p className="text-[11px] text-slate-400 font-mono">Autonomous Monitor</p>
           </div>
         </Link>
       </div>
 
-      {/* Main Navigation */}
-      <div className="px-3 py-4 flex-1 space-y-6 overflow-y-auto">
-        <div>
-          <div className="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-            Control Surface
+      {/* Navigation Links */}
+      <div className="flex-1 px-3 py-4 space-y-6 overflow-y-auto">
+        <div className="space-y-1">
+          <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            Observation
           </div>
-          <nav className="space-y-1">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative",
+                  item.active
+                    ? "bg-radar-cyan/15 text-radar-cyan border border-radar-cyan/30 shadow-glow"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-space-850/80 border border-transparent"
+                )}
+              >
+                <Icon
                   className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group",
-                    item.active
-                      ? "bg-radar-cyan/10 text-radar-cyan border border-radar-cyan/30 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-space-800/60"
+                    "h-4 w-4 transition-transform group-hover:scale-110",
+                    item.active ? "text-radar-cyan" : "text-slate-400 group-hover:text-slate-200"
                   )}
-                >
-                  <Icon
-                    className={cn(
-                      "h-4 w-4 transition-colors",
-                      item.active
-                        ? "text-radar-cyan"
-                        : "text-slate-400 group-hover:text-slate-200"
-                    )}
-                  />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-          </nav>
+                />
+                <span>{item.label}</span>
+                {item.active && (
+                  <span className="absolute right-2.5 h-1.5 w-1.5 rounded-full bg-radar-cyan shadow-[0_0_6px_#06b6d4]" />
+                )}
+              </Link>
+            );
+          })}
         </div>
 
-        {/* Quick Launch CTA */}
-        <div className="p-3 rounded-2xl bg-gradient-to-b from-space-800 to-space-850 border border-space-700/80">
-          <div className="flex items-center gap-2 text-xs font-semibold text-white mb-1.5">
-            <Sparkles className="h-4 w-4 text-radar-indigo" />
-            <span>AI Natural Planner</span>
+        {/* Quick Actions */}
+        <div className="px-3 space-y-2">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            Action Center
           </div>
-          <p className="text-xs text-slate-400 mb-3 leading-relaxed">
-            Tell Web Radar what product and price to watch in plain English.
-          </p>
           <Link
             href="/"
             className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-xl bg-radar-cyan text-space-950 font-semibold text-xs hover:bg-cyan-300 transition-colors shadow-glow"
@@ -155,11 +147,11 @@ export function Sidebar() {
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 overflow-hidden flex-1 min-w-0">
             <div className="h-8 w-8 rounded-lg bg-space-800 border border-space-700 flex items-center justify-center text-xs font-bold text-cyan-400 shrink-0">
-              {user ? user.email.slice(0, 2).toUpperCase() : "WR"}
+              {user?.email ? user.email.slice(0, 2).toUpperCase() : "WR"}
             </div>
             <div className="overflow-hidden min-w-0">
               <p className="text-xs font-medium text-white truncate">
-                {user ? user.email : "Connecting..."}
+                {user?.email || "Authenticated User"}
               </p>
               <p className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
@@ -167,18 +159,17 @@ export function Sidebar() {
               </p>
             </div>
           </div>
-          {user && (
+          {isAuthenticated && (
             <button
               onClick={signOut}
               title="Sign Out"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-950/30 border border-transparent hover:border-red-900/40 transition-colors shrink-0"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-950/30 border border-transparent hover:border-red-900/40 transition-colors shrink-0 cursor-pointer"
             >
               <LogOut className="h-4 w-4" />
             </button>
           )}
         </div>
       </div>
-
     </aside>
   );
 }
