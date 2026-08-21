@@ -200,12 +200,11 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = async () => {
     setError(null);
     try {
-      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const callbackURL = typeof window !== "undefined" ? window.location.origin : "/";
       const res = await authClient.signIn.social({
         provider: "google",
-        callbackURL: `${origin}/`,
-        errorCallbackURL: `${origin}/sign-in`,
-      } as any);
+        callbackURL,
+      });
 
       if (res?.error) {
         const msg = extractErrorMessage(res.error, "Google sign-in failed");
@@ -225,12 +224,11 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const linkGoogleAccount = async () => {
     setError(null);
     try {
-      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const callbackURL = typeof window !== "undefined" ? `${window.location.origin}/settings` : "/settings";
       const res = await authClient.linkSocial({
         provider: "google",
-        callbackURL: `${origin}/settings`,
-        errorCallbackURL: `${origin}/settings`,
-      } as any);
+        callbackURL,
+      });
 
       if (res?.error) {
         const msg = extractErrorMessage(res.error, "Failed to connect Google account");
