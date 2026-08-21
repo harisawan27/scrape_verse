@@ -58,12 +58,25 @@ with gr.Blocks(title="Web Radar API & Monitoring Hub") as demo:
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 7860))
 
-    # Launch Gradio server using standard arguments accepted by ZeroGPU
-    gradio_app, local_url, share_url = demo.launch(
-        server_name="0.0.0.0",
-        server_port=port,
-        prevent_thread_lock=True,
-    )
+    # Launch Gradio server attempting to disable SSR if supported by installed version
+    launch_kwargs = {
+        "server_name": "0.0.0.0",
+        "server_port": port,
+        "prevent_thread_lock": True,
+    }
+    try:
+        gradio_app, local_url, share_url = demo.launch(
+            ssr_mode=False,
+            **launch_kwargs,
+        )
+    except TypeError:
+        try:
+            gradio_app, local_url, share_url = demo.launch(
+                ssr=False,
+                **launch_kwargs,
+            )
+        except TypeError:
+            gradio_app, local_url, share_url = demo.launch(**launch_kwargs)
 
     # Ensure FastAPI routes are evaluated first before Gradio's catch-all handler
     gradio_app.include_router(fastapi_app.router)

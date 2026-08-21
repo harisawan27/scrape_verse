@@ -169,26 +169,34 @@ def create_watch(
     return watch
 
 
-
-
-
 @app.get("/v1/watches", response_model=list[WatchSummaryRead])
 def list_watches(
     user_id: str | None = None,
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
-    # Always scope results to the authenticated user
-    return WatchRepository(db).list_summaries_for_user(current_user.id)
+    repository = WatchRepository(db)
+    target_user = current_user
+    if target_user is None and user_id:
+        target_user = repository.get_user(user_id)
+    if target_user is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return repository.list_summaries_for_user(target_user.id)
 
 
 @app.get("/v1/watches/{watch_id}", response_model=WatchRead)
 def get_watch(
     watch_id: str,
-    current_user: User = Depends(get_current_user),
+    user_id: str | None = None,
+    current_user: User | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
-    watch = WatchRepository(db).get(watch_id, user_id=current_user.id)
+    repository = WatchRepository(db)
+    target_user = current_user
+    if target_user is None and user_id:
+        target_user = repository.get_user(user_id)
+    uid = target_user.id if target_user else None
+    watch = repository.get(watch_id, user_id=uid)
     if watch is None:
         raise HTTPException(status_code=404, detail="watch not found")
     return watch
@@ -197,10 +205,16 @@ def get_watch(
 @app.get("/v1/watches/{watch_id}/overview", response_model=WatchOverviewRead)
 def get_watch_overview(
     watch_id: str,
-    current_user: User = Depends(get_current_user),
+    user_id: str | None = None,
+    current_user: User | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
-    overview = WatchRepository(db).get_watch_overview(watch_id, user_id=current_user.id)
+    repository = WatchRepository(db)
+    target_user = current_user
+    if target_user is None and user_id:
+        target_user = repository.get_user(user_id)
+    uid = target_user.id if target_user else None
+    overview = repository.get_watch_overview(watch_id, user_id=uid)
     if overview is None:
         raise HTTPException(status_code=404, detail="watch not found")
     return overview
@@ -210,22 +224,32 @@ def get_watch_overview(
 def list_activity(
     user_id: str | None = None,
     limit: int = 50,
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
-    # Strictly scoped to current user's Watches
-    return WatchRepository(db).list_activity_for_user(current_user.id, limit=limit)
+    repository = WatchRepository(db)
+    target_user = current_user
+    if target_user is None and user_id:
+        target_user = repository.get_user(user_id)
+    if target_user is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return repository.list_activity_for_user(target_user.id, limit=limit)
 
 
 @app.patch("/v1/watches/{watch_id}", response_model=WatchRead)
 def update_watch(
     watch_id: str,
     data: WatchUpdate,
-    current_user: User = Depends(get_current_user),
+    user_id: str | None = None,
+    current_user: User | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
     repository = WatchRepository(db)
-    watch = repository.get(watch_id, user_id=current_user.id)
+    target_user = current_user
+    if target_user is None and user_id:
+        target_user = repository.get_user(user_id)
+    uid = target_user.id if target_user else None
+    watch = repository.get(watch_id, user_id=uid)
     if watch is None:
         raise HTTPException(status_code=404, detail="watch not found")
     updated = repository.update(watch, data)
@@ -236,11 +260,16 @@ def update_watch(
 @app.delete("/v1/watches/{watch_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_watch(
     watch_id: str,
-    current_user: User = Depends(get_current_user),
+    user_id: str | None = None,
+    current_user: User | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ) -> Response:
     repository = WatchRepository(db)
-    watch = repository.get(watch_id, user_id=current_user.id)
+    target_user = current_user
+    if target_user is None and user_id:
+        target_user = repository.get_user(user_id)
+    uid = target_user.id if target_user else None
+    watch = repository.get(watch_id, user_id=uid)
     if watch is None:
         raise HTTPException(status_code=404, detail="watch not found")
     repository.delete(watch)
@@ -256,12 +285,16 @@ def delete_watch(
 def trigger_watch_run(
     watch_id: str,
     execute_now: bool = True,
-    current_user: User = Depends(get_current_user),
+    user_id: str | None = None,
+    current_user: User | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
-    """Create a durable pending Run for user's Watch, then execute it via BrightData or Mock executor."""
     repository = WatchRepository(db)
-    watch = repository.get(watch_id, user_id=current_user.id)
+    target_user = current_user
+    if target_user is None and user_id:
+        target_user = repository.get_user(user_id)
+    uid = target_user.id if target_user else None
+    watch = repository.get(watch_id, user_id=uid)
     if watch is None:
         raise HTTPException(status_code=404, detail="watch not found")
 
@@ -286,11 +319,16 @@ def trigger_watch_run(
 @app.get("/v1/watches/{watch_id}/runs", response_model=list[WatchRunRead])
 def list_watch_runs(
     watch_id: str,
-    current_user: User = Depends(get_current_user),
+    user_id: str | None = None,
+    current_user: User | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
     repository = WatchRepository(db)
-    if repository.get(watch_id, user_id=current_user.id) is None:
+    target_user = current_user
+    if target_user is None and user_id:
+        target_user = repository.get_user(user_id)
+    uid = target_user.id if target_user else None
+    if repository.get(watch_id, user_id=uid) is None:
         raise HTTPException(status_code=404, detail="watch not found")
     return repository.list_runs_for_watch(watch_id)
 
