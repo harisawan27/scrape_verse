@@ -266,17 +266,21 @@ export function WatchDetailHero({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {watch.monitoring_spec?.rules?.map((rule, idx) => (
-            <div
-              key={idx}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-space-850 border border-space-700 text-xs font-mono"
-            >
-              <span className="h-2 w-2 rounded-full bg-radar-emerald" />
-              <span className="font-semibold text-white font-sans">
-                {formatRuleDescription(rule)}
-              </span>
-            </div>
-          ))}
+          {(watch.monitoring_spec?.rules || []).length === 0 ? (
+            <p className="text-xs text-slate-500 italic">No custom rules specified (monitoring all structured fields).</p>
+          ) : (
+            (watch.monitoring_spec?.rules || []).map((rule, idx) => (
+              <div
+                key={idx}
+                className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-space-850 border border-space-700 text-xs font-mono"
+              >
+                <span className="h-2 w-2 rounded-full bg-radar-emerald" />
+                <span className="font-semibold text-white font-sans">
+                  {formatRuleDescription(rule)}
+                </span>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>

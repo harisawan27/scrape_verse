@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "../components/layout/Header";
 import { CreateWatchHero } from "../components/dashboard/CreateWatchHero";
@@ -35,10 +35,12 @@ export default function DashboardPage() {
         api.getWatches(userId || undefined).catch(() => []),
         api.getActivity(userId || undefined, 10).catch(() => []),
       ]);
-      setWatches(watchesRes);
-      setActivity(activityRes);
+      setWatches(Array.isArray(watchesRes) ? watchesRes : []);
+      setActivity(Array.isArray(activityRes) ? activityRes : []);
     } catch (err) {
       console.error("Failed to load dashboard data:", err);
+      setWatches([]);
+      setActivity([]);
     } finally {
       if (showLoading) setLoading(false);
     }
@@ -68,7 +70,11 @@ export default function DashboardPage() {
     loadData(false);
   };
 
-  const filteredWatches = watches.filter((w) => {
+  const safeWatches = Array.isArray(watches) ? watches : [];
+  const safeActivity = Array.isArray(activity) ? activity : [];
+
+  const filteredWatches = safeWatches.filter((w) => {
+    if (!w) return false;
     if (filterHealth === "all") return true;
     return w.health_status === filterHealth;
   });
@@ -97,7 +103,7 @@ export default function DashboardPage() {
         <CreateWatchHero onWatchCreated={handleWatchCreated} />
 
         {/* 2. While You Were Away (Recent Semantic Alerts) */}
-        <WhileYouWereAway events={activity} loading={loading} />
+        <WhileYouWereAway events={safeActivity} loading={loading} />
 
         {/* 3. Active Watches Section */}
         <div className="space-y-4">
@@ -110,12 +116,12 @@ export default function DashboardPage() {
                 Active Radar Watches
               </h3>
               <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-space-800 text-slate-300 border border-space-700">
-                {watches.length}
+                {safeWatches.length}
               </span>
             </div>
 
             {/* Health Filter Chips */}
-            {watches.length > 0 && (
+            {safeWatches.length > 0 && (
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
                 {[
                   { id: "all", label: "All" },
@@ -151,7 +157,7 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : filteredWatches.length === 0 ? (
-            watches.length === 0 ? (
+            safeWatches.length === 0 ? (
               <EmptyState
                 icon={Radar}
                 title="No Active Watches Yet"

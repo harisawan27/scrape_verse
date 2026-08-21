@@ -29,6 +29,8 @@ interface WhileYouWereAwayProps {
 }
 
 export function WhileYouWereAway({ events, loading }: WhileYouWereAwayProps) {
+  const safeEvents = Array.isArray(events) ? events : [];
+
   if (loading) {
     return (
       <div className="space-y-3">
@@ -49,7 +51,7 @@ export function WhileYouWereAway({ events, loading }: WhileYouWereAwayProps) {
   }
 
   // If no live events yet, render an educational demo state clearly labeled as an Example Signal
-  if (!events || events.length === 0) {
+  if (safeEvents.length === 0) {
     return (
       <div className="rounded-3xl p-5 md:p-6 bg-gradient-to-r from-space-900 via-space-850 to-space-900 border border-space-700/70 space-y-3">
         <div className="flex items-center justify-between">
@@ -111,7 +113,7 @@ export function WhileYouWereAway({ events, loading }: WhileYouWereAwayProps) {
             While You Were Away
           </h3>
           <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-radar-emerald/15 text-radar-emerald border border-radar-emerald/30">
-            {events.length} New Signal{events.length === 1 ? "" : "s"}
+            {safeEvents.length} New Signal{safeEvents.length === 1 ? "" : "s"}
           </span>
         </div>
 
@@ -125,7 +127,8 @@ export function WhileYouWereAway({ events, loading }: WhileYouWereAwayProps) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {events.slice(0, 3).map((event) => {
+        {safeEvents.slice(0, 3).map((event) => {
+          if (!event) return null;
           const typeInfo = getEventTypeLabel(event.event_type);
           const prevPrice = event.details?.previous_value;
           const currPrice = event.details?.current_value;

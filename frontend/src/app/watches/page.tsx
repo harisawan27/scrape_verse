@@ -31,9 +31,10 @@ export default function WatchesPage() {
     try {
       if (showLoading) setLoading(true);
       const res = await api.getWatches(userId || undefined);
-      setWatches(res);
+      setWatches(Array.isArray(res) ? res : []);
     } catch (err) {
       console.error("Failed to load watches:", err);
+      setWatches([]);
     } finally {
       if (showLoading) setLoading(false);
     }
@@ -58,11 +59,17 @@ export default function WatchesPage() {
     return () => clearInterval(interval);
   }, [isAuthenticated, loadWatches]);
 
-  const filteredWatches = watches.filter((w) => {
+  const safeWatches = Array.isArray(watches) ? watches : [];
+
+  const filteredWatches = safeWatches.filter((w) => {
+    if (!w) return false;
+    const title = w.title || "";
+    const domain = w.domain || "";
+    const url = w.url || "";
     const matchesSearch =
-      w.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      w.domain.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      w.url.toLowerCase().includes(searchQuery.toLowerCase());
+      title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      domain.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      url.toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesHealth =
       filterHealth === "all" || w.health_status === filterHealth;
@@ -98,12 +105,12 @@ export default function WatchesPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search watches by title, domain, or URL..."
-              className="w-full pl-10 pr-4 py-2 rounded-xl bg-space-950/80 border border-space-750 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-radar-cyan"
+              placeholder="Search by product name, URL, or domain (e.g. priceoye.pk, daraz.pk)..."
+              className="w-full pl-10 pr-4 py-2 bg-space-950/80 border border-space-700/80 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-radar-cyan/60 transition-colors"
             />
           </div>
 
-          <div className="flex items-center gap-1.5 overflow-x-auto">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
             {[
               { id: "all", label: "All" },
               { id: "healthy", label: "Healthy" },
@@ -115,9 +122,9 @@ export default function WatchesPage() {
               <button
                 key={f.id}
                 onClick={() => setFilterHealth(f.id)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors whitespace-nowrap ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
                   filterHealth === f.id
-                    ? "bg-radar-cyan text-space-950 font-bold shadow-glow"
+                    ? "bg-radar-cyan text-space-950 font-bold"
                     : "bg-space-850 hover:bg-space-800 text-slate-400 hover:text-slate-200 border border-space-700/60"
                 }`}
               >
@@ -127,7 +134,7 @@ export default function WatchesPage() {
           </div>
         </div>
 
-        {/* Watches Grid */}
+        {/* Watches Grid / Empty State */}
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -138,27 +145,29 @@ export default function WatchesPage() {
             ))}
           </div>
         ) : filteredWatches.length === 0 ? (
-          <EmptyState
-            icon={Eye}
-            title={
-              searchQuery || filterHealth !== "all"
-                ? "No Matching Watches"
-                : "No Active Watches"
-            }
-            description={
-              searchQuery || filterHealth !== "all"
-                ? "Try clearing your search query or changing your health filter."
-                : "You haven't created any Radar Watches yet. Create your first watch to monitor web prices and inventory."
-            }
-            actionText="Create New Watch"
-            onAction={() => {
-              window.location.href = "/";
-            }}
-          />
+          safeWatches.length === 0 ? (
+            <EmptyState
+              icon={Eye}
+              title="No Watches Found"
+              description="You haven't created any watches yet. Create your first autonomous watch from the Command Center."
+              actionText="Go to Command Center"
+              onAction={() => router.push("/")}
+            />
+          ) : (
+            <div className="p-12 rounded-2xl bg-space-900/40 border border-space-750 text-center">
+              <p className="text-sm text-slate-400">
+                No Watches matching &quot;{searchQuery || filterHealth}&quot;
+              </p>
+            </div>
+          )
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {filteredWatches.map((watch) => (
-              <WatchCard key={watch.id} watch={watch} onRefresh={() => loadWatches(false)} />
+              <WatchCard
+                key={watch.id}
+                watch={watch}
+                onRefresh={() => loadWatches(false)}
+              />
             ))}
           </div>
         )}

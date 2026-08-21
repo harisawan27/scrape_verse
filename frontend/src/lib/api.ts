@@ -196,16 +196,21 @@ export const api = {
    */
   async getWatches(userId?: string): Promise<WatchSummary[]> {
     const query = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
-    return request<WatchSummary[]>(`/v1/watches${query}`);
+    const res = await request<WatchSummary[]>(`/v1/watches${query}`).catch(() => []);
+    return Array.isArray(res) ? res : [];
   },
 
   /**
    * Retrieve aggregate overview for a specific Watch.
    */
   async getWatchOverview(watchId: string): Promise<WatchOverview> {
-    return request<WatchOverview>(
+    const res = await request<WatchOverview>(
       `/v1/watches/${encodeURIComponent(watchId)}/overview`
     );
+    if (!res) {
+      throw new ApiError("Watch not found", 404);
+    }
+    return res;
   },
 
   /**
@@ -218,7 +223,8 @@ export const api = {
     const query = userId
       ? `?user_id=${encodeURIComponent(userId)}&limit=${limit}`
       : `?limit=${limit}`;
-    return request<AlertEvent[]>(`/v1/activity${query}`);
+    const res = await request<AlertEvent[]>(`/v1/activity${query}`).catch(() => []);
+    return Array.isArray(res) ? res : [];
   },
 
   /**

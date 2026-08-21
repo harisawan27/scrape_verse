@@ -353,7 +353,7 @@ export function CreateWatchHero({ onWatchCreated }: CreateWatchHeroProps) {
                     <span>Deterministic Alert Condition</span>
                   </div>
                   <div className="space-y-2">
-                    {previewResult.plan.monitoring_spec.rules.map((rule, idx) => (
+                    {(previewResult.plan?.monitoring_spec?.rules || []).map((rule, idx) => (
                       <div
                         key={idx}
                         className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-lg bg-space-950/70 border border-space-750 text-xs font-mono"
@@ -428,7 +428,7 @@ export function CreateWatchHero({ onWatchCreated }: CreateWatchHeroProps) {
                 </p>
                 <div className="flex items-center gap-2 pt-1">
                   <span className="text-[11px] text-slate-500 font-mono">Missing parameters:</span>
-                  {previewResult.clarification.missing.map((m, i) => (
+                  {(previewResult.clarification.missing || []).map((m, i) => (
                     <span
                       key={i}
                       className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[11px] font-mono font-semibold"
