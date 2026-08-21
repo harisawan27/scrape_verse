@@ -4,7 +4,16 @@ import subprocess
 import atexit
 import signal
 import threading
-import spaces
+try:
+    import spaces
+except ImportError:
+    class spaces:  # type: ignore
+        @staticmethod
+        def GPU(*args, **kwargs):
+            def decorator(f):
+                return f
+            return decorator
+
 import gradio as gr
 
 # 0. Unconditional module-level ZeroGPU compatibility function
@@ -49,10 +58,11 @@ with gr.Blocks(title="Web Radar API & Monitoring Hub") as demo:
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 7860))
 
-    # Launch Gradio server
+    # Launch Gradio server with SSR disabled so SvelteKit doesn't intercept FastAPI POST requests
     gradio_app, local_url, share_url = demo.launch(
         server_name="0.0.0.0",
         server_port=port,
+        ssr=False,
         prevent_thread_lock=True,
     )
 
