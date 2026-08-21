@@ -11,8 +11,9 @@ import {
   WatchUpdateInput,
 } from "../types";
 
-const API_BASE_URL =
+const rawBaseUrl =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+const API_BASE_URL = rawBaseUrl.replace(/\/+$/, "");
 
 const TOKEN_STORAGE_KEY = "web_radar_auth_token";
 
@@ -56,7 +57,8 @@ async function request<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
+  const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  const url = `${API_BASE_URL}${cleanEndpoint}`;
   const method = (options.method || "GET").toUpperCase();
   const isIdempotentGet = method === "GET";
   const maxRetries = isIdempotentGet ? 2 : 0;
