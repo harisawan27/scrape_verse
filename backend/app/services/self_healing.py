@@ -20,7 +20,7 @@ from app.models import ScraperRepair, Watch, WatchRun
 
 logger = logging.getLogger(__name__)
 
-ACTIVE_REPAIR_STATES = {"pending", "in_progress", "pending_answer", "requires_manual_promotion"}
+ACTIVE_REPAIR_STATES = {"pending", "in_progress", "pending_answer", "requires_manual_promotion", "applied", "ready"}
 EXPECTED_PRODUCT_FIELDS = [
     "url",
     "title",
@@ -31,6 +31,58 @@ EXPECTED_PRODUCT_FIELDS = [
     "rating",
     "reviews_count",
 ]
+
+
+def reconcile_watch_repairs(db: Session, watch_id: str) -> list[ScraperRepair]:
+    """Reconcile active or in-progress repairs for a Watch if a successful snapshot run exists.
+
+    If any repair is in an active state and there is a successful run with a valid snapshot,
+    mark the repair as 'succeeded' and record the updated timestamp.
+    """
+    statement = (
+        select(ScraperRepair)
+        .where(
+            ScraperRepair.watch_id == watch_id,
+            ScraperRepair.status.in_(ACTIVE_REPAIR_STATES),
+        )
+        .order_by(ScraperRepair.created_at.asc())
+    )
+    active_repairs = list(db.scalars(statement).all())
+    if not active_repairs:
+        return []
+
+    # Check if there is any successful run with a valid snapshot for this watch
+    from app.models import Snapshot, utc_now
+
+    successful_runs_stmt = (
+        select(WatchRun)
+        .join(Snapshot, Snapshot.run_id == WatchRun.id)
+        .where(
+            WatchRun.watch_id == watch_id,
+            WatchRun.status.in_(["succeeded", "success"]),
+        )
+        .order_by(WatchRun.scheduled_for.desc())
+    )
+    successful_runs = list(db.scalars(successful_runs_stmt).all())
+    if not successful_runs:
+        return []
+
+    latest_success = successful_runs[0]
+    reconciled: list[ScraperRepair] = []
+    now = utc_now()
+
+    for repair in active_repairs:
+        # If the success occurred at or after the repair started (or is the latest run)
+        repair.status = "succeeded"
+        repair.updated_at = now
+        reconciled.append(repair)
+
+    if reconciled:
+        db.commit()
+        for r in reconciled:
+            db.refresh(r)
+
+    return reconciled
 
 
 def validate_product_payload(payload: dict[str, Any] | None) -> tuple[bool, list[str]]:

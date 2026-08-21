@@ -192,6 +192,10 @@ class MockRunExecutor:
 
             persisted_run.status = "succeeded"
             persisted_run.finished_at = utc_now()
+
+            from app.services.self_healing import reconcile_watch_repairs
+            reconcile_watch_repairs(self.db, persisted_run.watch_id)
+
             self.db.commit()
         except Exception as exc:
             self.db.rollback()
@@ -409,6 +413,10 @@ class BrightDataRunExecutor:
 
                 persisted_run.status = "succeeded"
                 persisted_run.finished_at = utc_now()
+
+                from app.services.self_healing import reconcile_watch_repairs
+                reconcile_watch_repairs(self.db, persisted_run.watch_id)
+
                 self.db.commit()
                 self.db.refresh(persisted_run)
                 return persisted_run

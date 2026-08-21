@@ -111,13 +111,17 @@ export interface ScraperRepair {
   watch_id: string;
   run_id: string;
   collector_id: string;
+  refactor_job_id?: string | null;
   repair_prompt: string;
-  status: "pending" | "in_progress" | "resolved" | "failed";
-  attempt_count: number;
-  last_attempt_at: string | null;
-  resolved_at: string | null;
-  error_message: string | null;
+  missing_fields?: string[];
+  status: "pending" | "in_progress" | "pending_answer" | "resolved" | "succeeded" | "failed" | string;
+  failure_reason?: string | null;
+  error_message?: string | null;
+  attempt_count?: number;
+  last_attempt_at?: string | null;
+  resolved_at?: string | null;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface WatchOverviewStats {

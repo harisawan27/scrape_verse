@@ -267,6 +267,10 @@ def test_controlled_end_to_end_self_healing_flow(db):
     run3 = worker_v3.process_run(run3.id)
     assert run3.status == "succeeded"
 
+    # Active repair is automatically reconciled to succeeded
+    db.refresh(repair)
+    assert repair.status == "succeeded"
+
     snapshots = list(db.scalars(select(Snapshot).where(Snapshot.watch_id == watch.id).order_by(Snapshot.captured_at.asc())).all())
     assert len(snapshots) == 2  # exactly 2 snapshots (v1 and healed v3, 0 snapshots for broken v2)
     assert snapshots[0].payload["price"] == 2999.0

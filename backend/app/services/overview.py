@@ -36,35 +36,35 @@ def derive_health_status(
 ) -> HealthStatus:
     """Derive deterministic frontend health status in strict order of precedence:
     1. 'paused': Watch is not in 'active' status.
-    2. 'repairing': An active repair (in_progress / pending) exists for this Watch.
-    3. 'running': A WatchRun is currently active (running / pending).
+    2. 'running': A WatchRun is currently active (running / pending).
+    3. 'repairing': An active repair (in_progress / pending) exists without a subsequent successful run.
     4. 'failed': The most recent completed/terminal run failed.
     5. 'healthy': The Watch is active with successful baseline runs or newly configured.
     """
     if watch.status != "active":
         return "paused"
 
-    # Active repair check
-    if repairs:
-        for r in repairs:
-            if r.status in ("pending", "in_progress"):
-                return "repairing"
-
     # Active running / pending run check
     for run in runs:
         if run.status in ("running", "pending"):
             return "running"
 
+    sorted_runs = sorted(runs, key=lambda r: r.scheduled_for, reverse=True) if runs else []
+    latest_run = sorted_runs[0] if sorted_runs else None
+    has_recovered = latest_run is not None and latest_run.status in ("succeeded", "success")
+
+    # Active repair check (only if not recovered by a successful run)
+    if repairs and not has_recovered:
+        for r in repairs:
+            if r.status in ("pending", "in_progress", "pending_answer", "requires_manual_promotion"):
+                return "repairing"
+
     # Most recent run check
-    if runs:
-        # Sort runs by scheduled_for / created_at descending
-        sorted_runs = sorted(runs, key=lambda r: r.scheduled_for or r.created_at, reverse=True)
-        latest_run = sorted_runs[0]
+    if latest_run is not None:
         if latest_run.status == "failed":
             return "failed"
         if latest_run.status in ("succeeded", "success"):
             return "healthy"
-
 
     return "healthy"
 

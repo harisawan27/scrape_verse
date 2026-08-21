@@ -105,7 +105,7 @@ class WatchRead(BaseModel):
     status: WatchStatus
     created_at: datetime
     updated_at: datetime
-    schedule: ScheduleRead
+    schedule: ScheduleRead | None = None
 
 
 

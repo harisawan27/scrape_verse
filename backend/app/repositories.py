@@ -202,6 +202,9 @@ class WatchRepository:
 
     def build_watch_summary(self, watch: Watch) -> WatchSummaryRead:
         """Construct the rich WatchSummaryRead card for list views."""
+        from app.services.self_healing import reconcile_watch_repairs
+        reconcile_watch_repairs(self.db, watch.id)
+
         runs = self.list_runs_for_watch(watch.id, limit=10)
         repairs = self.list_repairs_for_watch(watch.id, limit=5)
         latest_snapshot = self.get_latest_successful_snapshot(watch.id)
@@ -216,7 +219,7 @@ class WatchRepository:
             successful_runs[0].finished_at or successful_runs[0].scheduled_for if successful_runs else None
         )
 
-        active_repairs = [r for r in repairs if r.status in ("pending", "in_progress")]
+        active_repairs = [r for r in repairs if r.status in ("pending", "in_progress", "pending_answer")]
         active_repair_id = active_repairs[0].id if active_repairs else None
 
         latest_event = AlertRead.model_validate(alerts[0]) if alerts else None
@@ -254,6 +257,8 @@ class WatchRepository:
         if watch is None:
             return None
 
+        from app.services.self_healing import reconcile_watch_repairs
+        reconcile_watch_repairs(self.db, watch.id)
 
         runs = self.list_runs_for_watch(watch.id, limit=20)
         repairs = self.list_repairs_for_watch(watch.id, limit=10)

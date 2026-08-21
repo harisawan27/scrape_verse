@@ -94,7 +94,7 @@ def test_health_status_precedence_rules():
     assert derive_health_status(watch, runs=[]) == "paused"
     watch.status = "active"
 
-    # 3. Active repair (in_progress) takes top priority over other run states
+    # 3. Active repair (in_progress) on a failed run -> repairing
     active_repair = ScraperRepair(
         watch_id="w-1",
         run_id="r-1",
@@ -102,11 +102,15 @@ def test_health_status_precedence_rules():
         repair_prompt="Fix price",
         status="in_progress",
     )
-    completed_run = WatchRun(watch_id="w-1", status="succeeded", scheduled_for=datetime(2026, 8, 19, 10, 0, tzinfo=timezone.utc))
-    assert derive_health_status(watch, runs=[completed_run], repairs=[active_repair]) == "repairing"
+    failed_initial_run = WatchRun(watch_id="w-1", status="failed", scheduled_for=datetime(2026, 8, 19, 10, 0, tzinfo=timezone.utc))
+    assert derive_health_status(watch, runs=[failed_initial_run], repairs=[active_repair]) == "repairing"
+
+    # Recovery: If a newer successful run occurred after repair, health status is healthy
+    recovery_run = WatchRun(watch_id="w-1", status="succeeded", scheduled_for=datetime(2026, 8, 19, 11, 0, tzinfo=timezone.utc))
+    assert derive_health_status(watch, runs=[recovery_run, failed_initial_run], repairs=[active_repair]) == "healthy"
 
     # 4. Active running run -> running
-    running_run = WatchRun(watch_id="w-1", status="running", scheduled_for=datetime(2026, 8, 19, 11, 0, tzinfo=timezone.utc))
+    running_run = WatchRun(watch_id="w-1", status="running", scheduled_for=datetime(2026, 8, 19, 12, 0, tzinfo=timezone.utc))
     resolved_repair = ScraperRepair(
         watch_id="w-1",
         run_id="r-1",
@@ -114,11 +118,11 @@ def test_health_status_precedence_rules():
         repair_prompt="Fix price",
         status="resolved",
     )
-    assert derive_health_status(watch, runs=[running_run, completed_run], repairs=[resolved_repair]) == "running"
+    assert derive_health_status(watch, runs=[running_run, failed_initial_run], repairs=[resolved_repair]) == "running"
 
     # 5. Latest terminal run failed -> failed
     failed_run = WatchRun(watch_id="w-1", status="failed", scheduled_for=datetime(2026, 8, 19, 12, 0, tzinfo=timezone.utc))
-    assert derive_health_status(watch, runs=[failed_run, completed_run], repairs=[resolved_repair]) == "failed"
+    assert derive_health_status(watch, runs=[failed_run, failed_initial_run], repairs=[resolved_repair]) == "failed"
 
     # 6. Latest terminal run succeeded -> healthy
     newer_success_run = WatchRun(watch_id="w-1", status="succeeded", scheduled_for=datetime(2026, 8, 19, 13, 0, tzinfo=timezone.utc))

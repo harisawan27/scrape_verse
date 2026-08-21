@@ -98,15 +98,17 @@ export function SelfHealingBanner({ repair, collectorId = "c_msz0zrtw29tjzhzakl"
     );
   }
 
-  const isResolved = repair.status === "resolved";
-  const isInProgress = repair.status === "in_progress" || repair.status === "pending";
+  const isResolved = repair.status === "resolved" || repair.status === "succeeded";
+  const isInProgress = repair.status === "in_progress" || repair.status === "pending" || repair.status === "pending_answer" || repair.status === "requires_manual_promotion";
   const isFailed = repair.status === "failed";
+
+  const resolvedTime = repair.updated_at || repair.resolved_at;
 
   return (
     <div
       className={`rounded-3xl p-6 border transition-all ${
         isResolved
-          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-200"
+          ? "bg-gradient-to-r from-emerald-500/10 via-space-900 to-space-850 border-emerald-500/30 text-emerald-200 shadow-glow-emerald/20"
           : isFailed
           ? "bg-rose-500/10 border-rose-500/30 text-rose-200"
           : "bg-gradient-to-r from-amber-500/15 via-space-900 to-space-850 border-amber-500/40 text-amber-200 shadow-glow-amber"
@@ -135,11 +137,11 @@ export function SelfHealingBanner({ repair, collectorId = "c_msz0zrtw29tjzhzakl"
 
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold uppercase tracking-wider font-mono text-amber-400">
+                <span className="text-xs font-bold uppercase tracking-wider font-mono text-radar-cyan">
                   Bright Data Scraper Studio Self-Healing
                 </span>
                 <span
-                  className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${
+                  className={`text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-full border ${
                     isResolved
                       ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
                       : isFailed
@@ -147,13 +149,13 @@ export function SelfHealingBanner({ repair, collectorId = "c_msz0zrtw29tjzhzakl"
                       : "bg-amber-500/20 text-amber-300 border-amber-500/40"
                   }`}
                 >
-                  {repair.status.replace(/_/g, " ")}
+                  {isResolved ? "Self-Healing Complete" : repair.status.replace(/_/g, " ")}
                 </span>
               </div>
 
               <h4 className="text-base font-extrabold text-white">
                 {isResolved
-                  ? "Scraper Layout Drift Automatically Healed & Restored"
+                  ? "Self-Healing Complete — Scraper Recovered Successfully"
                   : isFailed
                   ? "Scraper Layout Drift Repair Unresolved"
                   : "Scraper Layout Drift Detected — Autonomous Repair in Progress"}
@@ -171,12 +173,17 @@ export function SelfHealingBanner({ repair, collectorId = "c_msz0zrtw29tjzhzakl"
               <Cpu className="h-3.5 w-3.5 text-radar-cyan" />
               <span>{repair.collector_id}</span>
             </div>
-            <div>Attempts: {repair.attempt_count}</div>
+            {repair.attempt_count !== undefined && repair.attempt_count > 0 && (
+              <div>Attempts: {repair.attempt_count}</div>
+            )}
             <div className="text-[11px] text-slate-400">
-              {isResolved
-                ? `Healed ${formatRelativeTime(repair.resolved_at)}`
-                : `Started ${formatRelativeTime(repair.created_at)}`}
+              Started {formatRelativeTime(repair.created_at)}
             </div>
+            {isResolved && resolvedTime && (
+              <div className="text-[11px] text-emerald-400 font-semibold">
+                Recovered {formatRelativeTime(resolvedTime)}
+              </div>
+            )}
           </div>
         </div>
 
