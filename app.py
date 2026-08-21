@@ -58,16 +58,20 @@ with gr.Blocks(title="Web Radar API & Monitoring Hub") as demo:
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 7860))
 
-    # Launch Gradio server with SSR disabled so SvelteKit doesn't intercept FastAPI POST requests
+    # Launch Gradio server using standard arguments accepted by ZeroGPU
     gradio_app, local_url, share_url = demo.launch(
         server_name="0.0.0.0",
         server_port=port,
-        ssr=False,
         prevent_thread_lock=True,
     )
 
-    # Attach existing Web Radar FastAPI routes directly to Gradio's FastAPI application
+    # Ensure FastAPI routes are evaluated first before Gradio's catch-all handler
     gradio_app.include_router(fastapi_app.router)
+    for route in reversed(fastapi_app.router.routes):
+        if route in gradio_app.router.routes:
+            gradio_app.router.routes.remove(route)
+        gradio_app.router.routes.insert(0, route)
+
     print(f"Web Radar REST API and Gradio UI running on {local_url}")
 
     # Start exactly ONE standalone background worker process for scheduler and Bright Data polling
