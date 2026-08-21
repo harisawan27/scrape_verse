@@ -56,9 +56,32 @@ const PASSWORD_RULES: PasswordRule[] = [
   },
 ];
 
+function GoogleIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24">
+      <path
+        fill="#4285F4"
+        d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.27 21.43 7.35 24 12 24Z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 10.03 0 12s.45 3.82 1.25 5.42l4.03-3.15Z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.35 0 3.27 2.57 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98Z"
+      />
+    </svg>
+  );
+}
+
 export default function SignUpPage() {
   const router = useRouter();
-  const { signUp, isAuthenticated } = useUser();
+  const { signUp, signInWithGoogle, isAuthenticated, loading: userLoading } = useUser();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -66,14 +89,15 @@ export default function SignUpPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // If already authenticated, redirect
   React.useEffect(() => {
-    if (isAuthenticated) {
+    if (!userLoading && isAuthenticated) {
       router.replace("/");
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, userLoading, router]);
 
   // Compute rule satisfaction in real-time
   const ruleStatuses = useMemo(() => {
@@ -127,11 +151,23 @@ export default function SignUpPage() {
       setLoading(true);
       setError(null);
       await signUp(email.trim(), password);
-      router.push("/");
+      router.replace("/");
+      router.refresh();
     } catch (err: any) {
       setError(err?.message || "Failed to create account. Email may already be in use.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGoogleSignUp = async () => {
+    try {
+      setGoogleLoading(true);
+      setError(null);
+      await signInWithGoogle();
+    } catch (err: any) {
+      setError(err?.message || "Google sign-in failed. Please try again.");
+      setGoogleLoading(false);
     }
   };
 
@@ -149,7 +185,7 @@ export default function SignUpPage() {
         {/* Brand Header */}
         <div className="flex flex-col items-center justify-center text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-3 group mb-4">
-            <div className="relative flex items-center justify-center h-12 w-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-cyan-500 p-0.5 shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition-transform">
+            <div className="relative flex items-center justify-center h-12 w-12 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 p-0.5 shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition-transform">
               <div className="w-full h-full bg-[#0B0F19] rounded-[14px] flex items-center justify-center">
                 <Radar className="w-6 h-6 text-cyan-400 animate-spin-slow" />
               </div>
@@ -169,115 +205,137 @@ export default function SignUpPage() {
             Create your account
           </h1>
           <p className="mt-2 text-sm text-slate-400 max-w-sm">
-            Continuous background surveillance with semantic change detection.
+            Isolated tenant workspace with Neon PostgreSQL & Bright Data scraper automation.
           </p>
         </div>
-      </div>
 
-      <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10">
-        {/* Glassmorphism Card */}
-        <div className="bg-[#0B0F19]/90 backdrop-blur-2xl py-8 px-6 shadow-2xl shadow-black/80 rounded-2xl border border-slate-800/80 sm:px-10 relative">
-          
-          {/* Top subtle glow line */}
-          <div className="absolute top-0 inset-x-8 h-px bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent" />
+        {/* Auth Card */}
+        <div className="bg-[#0B0F19]/90 border border-space-700/80 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500" />
 
           {error && (
-            <div className="mb-5 p-3.5 rounded-xl bg-rose-950/40 border border-rose-800/50 flex items-start gap-2.5 text-rose-200 text-sm animate-shake">
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-              <span>{error}</span>
+            <div className="mb-6 p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-start gap-3 text-rose-300 text-sm animate-in fade-in slide-in-from-top-2">
+              <AlertCircle className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-medium text-rose-200">Registration Error</p>
+                <p className="mt-0.5 text-xs text-rose-300/90 leading-relaxed">{error}</p>
+              </div>
             </div>
           )}
 
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            {/* Email Field */}
+          {/* 1. Continue with Google */}
+          <button
+            type="button"
+            onClick={handleGoogleSignUp}
+            disabled={loading || googleLoading}
+            className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-space-850 hover:bg-space-800 text-white font-medium text-sm rounded-xl border border-space-700/80 shadow-md hover:border-slate-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed group cursor-pointer"
+          >
+            {googleLoading ? (
+              <Loader2 className="w-5 h-5 animate-spin text-cyan-400" />
+            ) : (
+              <GoogleIcon className="w-5 h-5 flex-shrink-0" />
+            )}
+            <span>Continue with Google</span>
+          </button>
+
+          {/* 2. Divider */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-space-700/70" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-[#0B0F19] px-3 text-slate-500 font-medium tracking-wider">
+                or continue with email
+              </span>
+            </div>
+          </div>
+
+          {/* 3. Form */}
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                Email address
+              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                Work Email Address
               </label>
-              <div className="relative rounded-xl">
+              <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
-                  <Mail className="w-4 h-4" />
+                  <Mail className="h-4 w-4" />
                 </div>
                 <input
                   type="email"
-                  required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@company.com"
-                  className="block w-full pl-10 pr-3.5 py-2.5 bg-[#0F1422] border border-slate-700/80 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all shadow-inner"
+                  placeholder="name@company.com"
+                  autoComplete="email"
+                  required
+                  className="w-full pl-10 pr-4 py-2.5 bg-space-950/80 border border-space-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all"
                 />
               </div>
             </div>
 
-            {/* Password Field with Eye Toggle */}
+            {/* Password */}
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
-                  Password
-                </label>
-                {password && (
-                  <span className={`text-xs font-semibold ${strength.text}`}>
-                    {strength.label}
-                  </span>
-                )}
-              </div>
-              <div className="relative rounded-xl">
+              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                Password
+              </label>
+              <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
-                  <Lock className="w-4 h-4" />
+                  <Lock className="h-4 w-4" />
                 </div>
                 <input
                   type={showPassword ? "text" : "password"}
-                  required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 8 characters"
-                  className="block w-full pl-10 pr-10 py-2.5 bg-[#0F1422] border border-slate-700/80 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all shadow-inner"
+                  placeholder="••••••••"
+                  autoComplete="new-password"
+                  required
+                  className="w-full pl-10 pr-11 py-2.5 bg-space-950/80 border border-space-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-500 hover:text-slate-300 focus:outline-none"
                   aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-200 transition-colors focus:outline-none"
                 >
                   {showPassword ? (
-                    <EyeOff className="w-4 h-4" />
+                    <EyeOff className="h-4 w-4" />
                   ) : (
-                    <Eye className="w-4 h-4" />
+                    <Eye className="h-4 w-4" />
                   )}
                 </button>
               </div>
 
-              {/* Password Strength Indicator Bars */}
+              {/* Real-time Strength Meter */}
               {password.length > 0 && (
-                <div className="mt-2 space-y-2">
+                <div className="mt-2.5 space-y-2 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-400 font-medium">Password Strength:</span>
+                    <span className={`font-semibold ${strength.text}`}>
+                      {strength.label}
+                    </span>
+                  </div>
                   <div className="grid grid-cols-4 gap-1.5 h-1.5">
                     {[1, 2, 3, 4].map((step) => (
                       <div
                         key={step}
                         className={`h-full rounded-full transition-all duration-300 ${
-                          strength.score >= step ? strength.color : "bg-slate-800"
+                          step <= strength.score ? strength.color : "bg-space-800"
                         }`}
                       />
                     ))}
                   </div>
 
-                  {/* Interactive Real-Time Rules Checklist */}
-                  <div className="pt-1.5 grid grid-cols-2 gap-1.5 text-[11px]">
+                  {/* Rules Checklist */}
+                  <div className="p-3 bg-space-950/60 rounded-xl border border-space-800 grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs text-slate-400">
                     {ruleStatuses.map((rule) => (
-                      <div
-                        key={rule.id}
-                        className={`flex items-center gap-1.5 py-1 px-2 rounded-md transition-colors ${
-                          rule.passed
-                            ? "bg-emerald-950/40 text-emerald-300 border border-emerald-800/40"
-                            : "bg-slate-900/60 text-slate-400 border border-slate-800/60"
-                        }`}
-                      >
+                      <div key={rule.id} className="flex items-center gap-1.5">
                         {rule.passed ? (
-                          <Check className="w-3 h-3 text-emerald-400 shrink-0" />
+                          <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
                         ) : (
-                          <Circle className="w-2.5 h-2.5 text-slate-600 shrink-0" />
+                          <Circle className="w-3 h-3 text-slate-600 flex-shrink-0" />
                         )}
-                        <span className="truncate">{rule.label}</span>
+                        <span className={rule.passed ? "text-slate-200 font-medium" : "text-slate-500"}>
+                          {rule.label}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -285,100 +343,86 @@ export default function SignUpPage() {
               )}
             </div>
 
-            {/* Confirm Password Field with Eye Toggle */}
+            {/* Confirm Password */}
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
-                  Confirm Password
-                </label>
-                {confirmPassword && (
-                  <span
-                    className={`text-xs font-semibold ${
-                      passwordsMatch ? "text-emerald-400" : "text-rose-400"
-                    }`}
-                  >
-                    {passwordsMatch ? "Passwords match" : "Mismatch"}
-                  </span>
-                )}
-              </div>
-              <div className="relative rounded-xl">
+              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                Confirm Password
+              </label>
+              <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
-                  <CheckCircle2 className="w-4 h-4" />
+                  <Lock className="h-4 w-4" />
                 </div>
                 <input
                   type={showConfirmPassword ? "text" : "password"}
-                  required
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Re-enter your password"
-                  className={`block w-full pl-10 pr-10 py-2.5 bg-[#0F1422] border rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 transition-all shadow-inner ${
-                    confirmPassword && !passwordsMatch
-                      ? "border-rose-700/80 focus:ring-rose-500/50 focus:border-rose-500"
-                      : "border-slate-700/80 focus:ring-cyan-500/50 focus:border-cyan-500"
+                  placeholder="••••••••"
+                  autoComplete="new-password"
+                  required
+                  className={`w-full pl-10 pr-11 py-2.5 bg-space-950/80 border rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 transition-all ${
+                    passwordsMatch === false
+                      ? "border-rose-500/60 focus:ring-rose-500/50 focus:border-rose-500"
+                      : passwordsMatch === true
+                      ? "border-emerald-500/60 focus:ring-emerald-500/50 focus:border-emerald-500"
+                      : "border-space-700 focus:ring-cyan-500/50 focus:border-cyan-500"
                   }`}
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-500 hover:text-slate-300 focus:outline-none"
                   aria-label={showConfirmPassword ? "Hide password" : "Show password"}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-200 transition-colors focus:outline-none"
                 >
                   {showConfirmPassword ? (
-                    <EyeOff className="w-4 h-4" />
+                    <EyeOff className="h-4 w-4" />
                   ) : (
-                    <Eye className="w-4 h-4" />
+                    <Eye className="h-4 w-4" />
                   )}
                 </button>
               </div>
+              {passwordsMatch === false && confirmPassword.length > 0 && (
+                <p className="mt-1 text-xs text-rose-400">Passwords do not match</p>
+              )}
             </div>
 
-            {/* Submit Button */}
-            <div className="pt-2">
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full flex justify-center items-center gap-2 py-2.5 px-4 border border-transparent rounded-xl shadow-lg shadow-cyan-500/20 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 via-cyan-600 to-teal-500 hover:from-blue-500 hover:via-cyan-500 hover:to-teal-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 focus:ring-offset-[#07090E] transition-all disabled:opacity-50 disabled:cursor-not-allowed transform active:scale-[0.99]"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Creating Account with Neon Auth...
-                  </>
-                ) : (
-                  <>
-                    Create Account & Get Started
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-            </div>
+            <button
+              type="submit"
+              disabled={loading || googleLoading || (password.length > 0 && passedCount < 3)}
+              className="w-full mt-2 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold text-sm text-space-950 bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 shadow-lg shadow-cyan-500/25 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-space-950" />
+                  <span>Creating Account...</span>
+                </>
+              ) : (
+                <>
+                  <span>Create Account</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
           </form>
 
-          {/* Sign In Link */}
-          <div className="mt-6 pt-5 border-t border-slate-800/80 text-center">
+          {/* Footer Switch to Sign In */}
+          <div className="mt-6 pt-5 border-t border-space-800 text-center">
             <p className="text-sm text-slate-400">
               Already have an account?{" "}
-              <Link href="/sign-in" className="font-semibold text-cyan-400 hover:text-cyan-300 hover:underline">
-                Sign in
+              <Link
+                href="/sign-in"
+                className="font-semibold text-cyan-400 hover:text-cyan-300 transition-colors inline-flex items-center gap-1"
+              >
+                Sign In
+                <ArrowRight className="w-3.5 h-3.5" />
               </Link>
             </p>
           </div>
         </div>
 
-        {/* Feature Badges Footer */}
-        <div className="mt-8 grid grid-cols-3 gap-2 text-center">
-          <div className="flex flex-col items-center gap-1 p-2 rounded-xl bg-slate-900/40 border border-slate-800/40 text-slate-400">
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span className="text-[11px] font-medium">Neon Auth</span>
-          </div>
-          <div className="flex flex-col items-center gap-1 p-2 rounded-xl bg-slate-900/40 border border-slate-800/40 text-slate-400">
-            <Zap className="w-4 h-4 text-cyan-400" />
-            <span className="text-[11px] font-medium">Bright Data</span>
-          </div>
-          <div className="flex flex-col items-center gap-1 p-2 rounded-xl bg-slate-900/40 border border-slate-800/40 text-slate-400">
-            <Activity className="w-4 h-4 text-indigo-400" />
-            <span className="text-[11px] font-medium">Self-Healing</span>
-          </div>
+        {/* Security badge */}
+        <div className="mt-8 flex items-center justify-center gap-2 text-xs text-slate-500 font-mono">
+          <ShieldCheck className="w-4 h-4 text-emerald-400/80" />
+          <span>Secured by Managed Neon Auth & AES-256 PostgreSQL</span>
         </div>
       </div>
     </div>

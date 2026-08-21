@@ -14,6 +14,7 @@ interface UserContextValue {
   error: string | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, name?: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -27,83 +28,134 @@ const UserContext = createContext<UserContextValue>({
   error: null,
   signIn: async () => {},
   signUp: async () => {},
+  signInWithGoogle: async () => {},
   signOut: async () => {},
   refreshUser: async () => {},
 });
 
+function extractErrorMessage(err: unknown, fallback: string): string {
+  if (!err) return fallback;
+  if (typeof err === "string") return err;
+  if (typeof err === "object" && err !== null) {
+    const obj = err as Record<string, unknown>;
+    if (typeof obj.message === "string" && obj.message.trim().length > 0) {
+      return obj.message;
+    }
+    if (typeof obj.statusText === "string" && obj.statusText.trim().length > 0) {
+      return obj.statusText;
+    }
+  }
+  return fallback;
+}
+
 export function UserProvider({ children }: { children: React.ReactNode }) {
+  // 1. Reactive session hook from Neon Auth (powered by Better Auth React)
+  const sessionResult = authClient.useSession();
+  const sessionData = sessionResult?.data;
+  const sessionPending = sessionResult?.isPending;
+  const refetch = sessionResult?.refetch;
+
   const [user, setUser] = useState<User | null>(null);
   const [token, setTokenState] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loadingProfile, setLoadingProfile] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const restoreSession = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  // Sync session changes reactively
+  const syncSession = useCallback(async () => {
+    if (sessionPending) return;
 
-      // 1. Query managed Neon Auth session
-      const sessionRes = await authClient.getSession().catch(() => null);
-      if (sessionRes?.data?.session?.token) {
-        const sessionToken = sessionRes.data.session.token;
+    if (sessionData?.user) {
+      const sessionUser = sessionData.user;
+      const sessionToken =
+        sessionData.session?.token || sessionData.session?.id || "";
+
+      if (sessionToken) {
         api.setToken(sessionToken);
         setTokenState(sessionToken);
-
-        // 2. Resolve domain user profile from backend
-        try {
-          const me = await api.getMe();
-          setUser(me);
-        } catch {
-          // If backend profile is being provisioned, fallback to Neon session info
-          setUser({
-            id: sessionRes.data.user.id,
-            email: sessionRes.data.user.email,
-            auth_id: sessionRes.data.user.id,
-            created_at: new Date().toISOString(),
-          });
-        }
-      } else {
-        // No active Neon Auth session
-        api.setToken(null);
-        setUser(null);
-        setTokenState(null);
       }
-    } catch (err: any) {
-      console.warn("Neon Auth session restoration failed:", err?.message);
+
+      // Sync backend domain user profile
+      try {
+        setLoadingProfile(true);
+        const me = await api.getMe();
+        setUser(me);
+      } catch {
+        // Fallback to Neon Auth session data if backend profile is still provisioning
+        setUser({
+          id: sessionUser.id,
+          email: sessionUser.email,
+          auth_id: sessionUser.id,
+          created_at: new Date().toISOString(),
+        });
+      } finally {
+        setLoadingProfile(false);
+      }
+    } else {
       api.setToken(null);
       setUser(null);
       setTokenState(null);
-    } finally {
-      setLoading(false);
+      setLoadingProfile(false);
     }
-  }, []);
+  }, [sessionData, sessionPending]);
+
+  useEffect(() => {
+    syncSession();
+  }, [syncSession]);
+
+  const refreshUser = useCallback(async () => {
+    if (refetch) {
+      await refetch();
+    }
+    const sessionRes = await authClient.getSession().catch(() => null);
+    if (sessionRes?.data?.user) {
+      const sessionUser = sessionRes.data.user;
+      const sessionToken =
+        sessionRes.data.session?.token || sessionRes.data.session?.id || "";
+      if (sessionToken) {
+        api.setToken(sessionToken);
+        setTokenState(sessionToken);
+      }
+      try {
+        const me = await api.getMe();
+        setUser(me);
+      } catch {
+        setUser({
+          id: sessionUser.id,
+          email: sessionUser.email,
+          auth_id: sessionUser.id,
+          created_at: new Date().toISOString(),
+        });
+      }
+    } else {
+      api.setToken(null);
+      setUser(null);
+      setTokenState(null);
+    }
+  }, [refetch]);
 
   const signIn = async (email: string, password: string) => {
     setError(null);
-    setLoading(true);
     try {
       const res = await authClient.signIn.email({
         email: email.trim(),
         password,
       });
 
-      if (res.error) {
-        throw new Error(res.error.message || "Invalid email or password");
+      if (res?.error) {
+        const msg = extractErrorMessage(res.error, "Invalid email or password");
+        throw new Error(msg);
       }
 
-      await restoreSession();
-    } catch (err: any) {
-      const msg = err?.message || "Invalid email or password";
+      await refreshUser();
+    } catch (err: unknown) {
+      const msg = extractErrorMessage(err, "Invalid email or password");
       setError(msg);
       throw new Error(msg);
-    } finally {
-      setLoading(false);
     }
   };
 
   const signUp = async (email: string, password: string, name?: string) => {
     setError(null);
-    setLoading(true);
     try {
       const res = await authClient.signUp.email({
         email: email.trim(),
@@ -111,17 +163,35 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         name: name || email.split("@")[0],
       });
 
-      if (res.error) {
-        throw new Error(res.error.message || "Failed to create account with Neon Auth");
+      if (res?.error) {
+        const msg = extractErrorMessage(res.error, "Failed to create account with Neon Auth");
+        throw new Error(msg);
       }
 
-      await restoreSession();
-    } catch (err: any) {
-      const msg = err?.message || "Failed to create account";
+      await refreshUser();
+    } catch (err: unknown) {
+      const msg = extractErrorMessage(err, "Failed to create account");
       setError(msg);
       throw new Error(msg);
-    } finally {
-      setLoading(false);
+    }
+  };
+
+  const signInWithGoogle = async () => {
+    setError(null);
+    try {
+      const res = await authClient.signIn.social({
+        provider: "google",
+        callbackURL: "/",
+      });
+
+      if (res?.error) {
+        const msg = extractErrorMessage(res.error, "Google sign-in failed");
+        throw new Error(msg);
+      }
+    } catch (err: unknown) {
+      const msg = extractErrorMessage(err, "Google sign-in failed. Please try again.");
+      setError(msg);
+      throw new Error(msg);
     }
   };
 
@@ -132,29 +202,33 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       api.setToken(null);
       setUser(null);
       setTokenState(null);
+      if (refetch) {
+        await refetch();
+      }
       if (typeof window !== "undefined") {
         window.location.href = "/sign-in";
       }
     }
   };
 
-  useEffect(() => {
-    restoreSession();
-  }, [restoreSession]);
+  const isAuthenticated = !!user || (!!sessionData?.user && !sessionPending);
+  const loading = sessionPending || (!!sessionData?.user && !user && loadingProfile);
+  const effectiveUserId = user?.id || sessionData?.user?.id || null;
 
   return (
     <UserContext.Provider
       value={{
         user,
-        userId: user?.id || null,
+        userId: effectiveUserId,
         token,
-        isAuthenticated: !!user,
+        isAuthenticated,
         loading,
         error,
         signIn,
         signUp,
+        signInWithGoogle,
         signOut,
-        refreshUser: restoreSession,
+        refreshUser,
       }}
     >
       {children}
