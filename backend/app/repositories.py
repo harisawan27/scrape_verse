@@ -39,7 +39,23 @@ class WatchRepository:
 
 
     def get_user(self, user_id: str) -> User | None:
-        return self.db.get(User, user_id)
+        user = self.db.get(User, user_id)
+        if user is not None:
+            return user
+        # Check by auth_id
+        user = self.db.scalar(select(User).where(User.auth_id == str(user_id)))
+        if user is not None:
+            return user
+        # Auto-provision if user exists in neon_auth.user
+        try:
+            query = text('SELECT id::text, email FROM neon_auth.user WHERE id::text = :uid OR email = :uid LIMIT 1')
+            row = self.db.execute(query, {"uid": str(user_id)}).first()
+            if row:
+                from app.auth import resolve_or_create_user
+                return resolve_or_create_user(self.db, str(row[0]), str(row[1]))
+        except Exception:
+            pass
+        return None
 
     def get_user_by_email(self, email: str) -> User | None:
         return self.db.scalar(select(User).where(User.email == email))
@@ -61,15 +77,18 @@ class WatchRepository:
     def get(self, watch_id: str, user_id: str | None = None) -> Watch | None:
         statement = select(Watch).options(joinedload(Watch.schedule)).where(Watch.id == watch_id)
         if user_id is not None:
-            statement = statement.where(Watch.user_id == user_id)
+            user = self.get_user(user_id)
+            target_uid = user.id if user else user_id
+            statement = statement.where((Watch.user_id == target_uid) | (Watch.user_id == user_id))
         return self.db.scalar(statement)
 
-
     def list_for_user(self, user_id: str) -> list[Watch]:
+        user = self.get_user(user_id)
+        target_uid = user.id if user else user_id
         statement = (
             select(Watch)
             .options(joinedload(Watch.schedule))
-            .where(Watch.user_id == user_id)
+            .where((Watch.user_id == target_uid) | (Watch.user_id == user_id))
             .order_by(Watch.created_at.desc())
         )
         return list(self.db.scalars(statement).unique())

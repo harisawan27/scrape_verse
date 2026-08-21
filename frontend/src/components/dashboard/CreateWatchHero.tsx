@@ -58,7 +58,7 @@ const CORE_LOOP_STEPS = [
 ];
 
 export function CreateWatchHero({ onWatchCreated }: CreateWatchHeroProps) {
-  const { userId } = useUser();
+  const { user, userId } = useUser();
   const [instruction, setInstruction] = useState("");
   const [url, setUrl] = useState("");
   const [previewing, setPreviewing] = useState(false);
@@ -96,12 +96,20 @@ export function CreateWatchHero({ onWatchCreated }: CreateWatchHeroProps) {
   };
 
   const handleConfirmCreate = async () => {
-    if (!userId || !previewResult?.plan) return;
+    const targetUserId = userId || user?.id || user?.auth_id;
+    if (!targetUserId) {
+      setErrorMessage("Please ensure you are signed in before activating a watch.");
+      return;
+    }
+    if (!previewResult?.plan) {
+      setErrorMessage("No active plan to activate. Please generate a preview plan first.");
+      return;
+    }
 
     try {
       setCreating(true);
       setErrorMessage(null);
-      const created = await api.createWatchFromPlan(userId, previewResult.plan);
+      const created = await api.createWatchFromPlan(targetUserId, previewResult.plan);
       setSuccessWatch(created);
       setPreviewResult(null);
       setInstruction("");
@@ -414,29 +422,33 @@ export function CreateWatchHero({ onWatchCreated }: CreateWatchHeroProps) {
               </div>
             )}
 
-            {previewResult.status === "needs_clarification" && previewResult.clarification && (
+            {previewResult.status === "needs_clarification" && (
               <div className="p-3 space-y-3">
                 <div className="flex items-center gap-2 text-amber-400 text-xs font-bold uppercase tracking-wider">
                   <AlertCircle className="h-4 w-4" />
                   <span>Clarification Needed</span>
                 </div>
                 <h4 className="text-sm font-semibold text-white leading-relaxed">
-                  {previewResult.clarification.question}
+                  {previewResult.clarification?.question ||
+                    previewResult.clarification_prompt ||
+                    "Please specify additional details for this watch."}
                 </h4>
                 <p className="text-xs text-slate-400">
-                  {previewResult.clarification.reason}
+                  {previewResult.clarification?.reason || previewResult.message}
                 </p>
-                <div className="flex items-center gap-2 pt-1">
-                  <span className="text-[11px] text-slate-500 font-mono">Missing parameters:</span>
-                  {(previewResult.clarification.missing || []).map((m, i) => (
-                    <span
-                      key={i}
-                      className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[11px] font-mono font-semibold"
-                    >
-                      {m}
-                    </span>
-                  ))}
-                </div>
+                {((previewResult.clarification?.missing || previewResult.missing || []).length > 0) && (
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="text-[11px] text-slate-500 font-mono">Missing parameters:</span>
+                    {(previewResult.clarification?.missing || previewResult.missing || []).map((m, i) => (
+                      <span
+                        key={i}
+                        className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[11px] font-mono font-semibold"
+                      >
+                        {m}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

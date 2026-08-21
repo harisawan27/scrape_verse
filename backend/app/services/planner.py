@@ -352,7 +352,7 @@ class NaturalLanguageWatchPlanner:
         next_due = now_tz
 
         watch_create = WatchCreate(
-            user_id=user_id,
+            user_id=user.id,
             url=plan.url,
             title=plan.title,
             instruction=plan.intent,

@@ -162,7 +162,9 @@ export interface WatchPlanClarification {
 export interface WatchPlanPreviewResponse {
   status: "ready" | "needs_clarification" | "unsupported";
   plan: WatchPlan | null;
-  clarification: WatchPlanClarification | null;
+  clarification?: WatchPlanClarification | null;
+  clarification_prompt?: string | null;
+  missing?: string[];
   message: string;
 }
 

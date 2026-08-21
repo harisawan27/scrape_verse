@@ -2,13 +2,11 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import {
   User as UserIcon,
   Mail,
   Shield,
   Key,
-  Copy,
   Check,
   Edit2,
   Trash2,
@@ -16,17 +14,13 @@ import {
   Sparkles,
   AlertTriangle,
   Loader2,
-  ExternalLink,
   Radar,
-  Database,
-  Cloud,
-  Layers,
   Calendar,
   Lock,
+  CheckCircle2,
 } from "lucide-react";
 import { Header } from "../../components/layout/Header";
 import { useUser } from "../../lib/userContext";
-import { formatRelativeTime } from "../../lib/utils";
 
 function GoogleIcon({ className = "w-5 h-5" }: { className?: string }) {
   return (
@@ -55,7 +49,6 @@ export default function SettingsPage() {
   const router = useRouter();
   const {
     user,
-    userId,
     isAuthenticated,
     loading: userLoading,
     updateUserName,
@@ -69,9 +62,6 @@ export default function SettingsPage() {
   const [nameInput, setNameInput] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [nameSuccess, setNameSuccess] = useState(false);
-
-  // Copy UUID state
-  const [copiedId, setCopiedId] = useState(false);
 
   // Google linking state
   const [linkingGoogle, setLinkingGoogle] = useState(false);
@@ -97,14 +87,6 @@ export default function SettingsPage() {
       setNameInput(user.email.split("@")[0]);
     }
   }, [user]);
-
-  const handleCopyId = () => {
-    if (userId) {
-      navigator.clipboard.writeText(userId);
-      setCopiedId(true);
-      setTimeout(() => setCopiedId(false), 2000);
-    }
-  };
 
   const handleSaveName = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -165,15 +147,18 @@ export default function SettingsPage() {
     .slice(0, 2)
     .toUpperCase();
 
+  // Determine if Google authentication is connected (avatar from Google or Google name)
+  const isGoogleConnected = Boolean(user?.image);
+
   return (
     <div className="flex-1 flex flex-col min-h-full">
       <Header
-        title="Account & Tenant Settings"
-        subtitle="Manage your identity, profile credentials, and workspace security"
+        title="Account Settings"
+        subtitle="Manage your profile, identity preferences, and workspace security"
       />
 
       <div className="flex-1 p-6 md:p-8 space-y-8 max-w-4xl mx-auto w-full">
-        {/* 1. Profile & Identity Card */}
+        {/* 1. Profile Card */}
         <div className="rounded-2xl bg-[#0B0F19]/90 border border-space-700/80 p-6 md:p-8 shadow-xl relative overflow-hidden backdrop-blur-xl">
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-cyan-400 to-teal-400" />
 
@@ -197,7 +182,7 @@ export default function SettingsPage() {
                 <span className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full bg-emerald-500 border-2 border-[#0B0F19]" />
               </div>
 
-              {/* User Info & Edit Name */}
+              {/* User Info & Inline Edit Name */}
               <div>
                 {!isEditingName ? (
                   <div className="flex items-center gap-2.5">
@@ -206,8 +191,8 @@ export default function SettingsPage() {
                     </h2>
                     <button
                       onClick={() => setIsEditingName(true)}
-                      className="p-1 rounded-lg text-slate-400 hover:text-cyan-400 hover:bg-space-800 transition-colors"
-                      title="Edit Name"
+                      className="p-1 rounded-lg text-slate-400 hover:text-cyan-400 hover:bg-space-800 transition-colors cursor-pointer"
+                      title="Edit Display Name"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
@@ -223,7 +208,7 @@ export default function SettingsPage() {
                       type="text"
                       value={nameInput}
                       onChange={(e) => setNameInput(e.target.value)}
-                      placeholder="Enter display name"
+                      placeholder="Enter your name"
                       autoFocus
                       required
                       className="px-3 py-1 bg-space-950 border border-cyan-500/70 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-cyan-400"
@@ -243,7 +228,7 @@ export default function SettingsPage() {
                     <button
                       type="button"
                       onClick={() => setIsEditingName(false)}
-                      className="px-2.5 py-1 text-slate-400 hover:text-white text-xs transition-colors"
+                      className="px-2.5 py-1 text-slate-400 hover:text-white text-xs transition-colors cursor-pointer"
                     >
                       Cancel
                     </button>
@@ -253,15 +238,16 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            {/* Role Badge */}
+            {/* Plan Badge */}
             <div className="flex items-center gap-2">
-              <span className="px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-xs font-bold uppercase tracking-wider">
-                Tenant Owner
+              <span className="px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" />
+                Web Radar Pro
               </span>
             </div>
           </div>
 
-          {/* Account Details Grid */}
+          {/* Account Details Overview */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
             <div className="p-4 rounded-xl bg-space-950/60 border border-space-800 space-y-1">
               <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
@@ -274,32 +260,6 @@ export default function SettingsPage() {
                 </span>
               </div>
               <p className="text-sm font-semibold text-white truncate">{user?.email}</p>
-            </div>
-
-            <div className="p-4 rounded-xl bg-space-950/60 border border-space-800 space-y-1">
-              <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
-                <span className="flex items-center gap-1.5">
-                  <Shield className="w-3.5 h-3.5 text-cyan-400" />
-                  Tenant ID (UUID)
-                </span>
-                <button
-                  onClick={handleCopyId}
-                  className="text-[10px] text-slate-400 hover:text-cyan-400 flex items-center gap-1 transition-colors cursor-pointer"
-                >
-                  {copiedId ? (
-                    <>
-                      <Check className="w-3 h-3 text-emerald-400" />
-                      <span className="text-emerald-400">Copied</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3 h-3" />
-                      <span>Copy</span>
-                    </>
-                  )}
-                </button>
-              </div>
-              <p className="text-xs font-mono text-slate-300 truncate">{userId}</p>
             </div>
 
             <div className="p-4 rounded-xl bg-space-950/60 border border-space-800 space-y-1">
@@ -317,16 +277,6 @@ export default function SettingsPage() {
                   : "Active Member"}
               </p>
             </div>
-
-            <div className="p-4 rounded-xl bg-space-950/60 border border-space-800 space-y-1">
-              <span className="text-xs text-slate-400 font-mono flex items-center gap-1.5">
-                <Database className="w-3.5 h-3.5 text-emerald-400" />
-                PostgreSQL Schema
-              </span>
-              <p className="text-xs font-mono text-emerald-400">
-                neon_auth + public.watches (Isolated)
-              </p>
-            </div>
           </div>
         </div>
 
@@ -335,10 +285,10 @@ export default function SettingsPage() {
           <div className="border-b border-space-800 pb-4">
             <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
               <Key className="w-4 h-4 text-cyan-400" />
-              Connected Identity Providers
+              Authentication & Security
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              Sign in seamlessly with Google or your standard email and password.
+              Manage your sign-in methods and linked identity providers.
             </p>
           </div>
 
@@ -351,43 +301,60 @@ export default function SettingsPage() {
 
           <div className="space-y-3">
             {/* Google Provider Card */}
-            <div className="p-4 rounded-xl bg-space-950/70 border border-space-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-space-900 border border-space-700 flex items-center justify-center flex-shrink-0">
-                  <GoogleIcon className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-bold text-white">Google Identity</p>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                      Enabled
-                    </span>
+            {isGoogleConnected ? (
+              <div className="p-4 rounded-xl bg-space-950/70 border border-emerald-500/30 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-space-900 border border-space-700 flex items-center justify-center flex-shrink-0">
+                    <GoogleIcon className="w-5 h-5" />
                   </div>
-                  <p className="text-xs text-slate-400">
-                    Allows 1-click single sign-on across all devices.
-                  </p>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-bold text-white">Google Identity</p>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" />
+                        Connected
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      Primary sign-in method linked to your account.
+                    </p>
+                  </div>
                 </div>
               </div>
+            ) : (
+              <div className="p-4 rounded-xl bg-space-950/70 border border-space-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-space-900 border border-space-700 flex items-center justify-center flex-shrink-0">
+                    <GoogleIcon className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-white">Google Identity</p>
+                    <p className="text-xs text-slate-400">
+                      Link your Google account for 1-click seamless single sign-on.
+                    </p>
+                  </div>
+                </div>
 
-              <button
-                type="button"
-                onClick={handleLinkGoogle}
-                disabled={linkingGoogle}
-                className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-space-850 hover:bg-space-800 text-white font-semibold text-xs border border-space-700 hover:border-slate-500 transition-colors disabled:opacity-50 cursor-pointer flex-shrink-0"
-              >
-                {linkingGoogle ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
-                    <span>Connecting...</span>
-                  </>
-                ) : (
-                  <>
-                    <GoogleIcon className="w-3.5 h-3.5" />
-                    <span>Connect Google Account</span>
-                  </>
-                )}
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={handleLinkGoogle}
+                  disabled={linkingGoogle}
+                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-space-850 hover:bg-space-800 text-white font-semibold text-xs border border-space-700 hover:border-slate-500 transition-colors disabled:opacity-50 cursor-pointer flex-shrink-0"
+                >
+                  {linkingGoogle ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                      <span>Connecting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <GoogleIcon className="w-3.5 h-3.5" />
+                      <span>Connect Google</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
 
             {/* Email / Password Provider Card */}
             <div className="p-4 rounded-xl bg-space-950/70 border border-space-800 flex items-center justify-between">
@@ -403,7 +370,7 @@ export default function SettingsPage() {
                     </span>
                   </div>
                   <p className="text-xs text-slate-400">
-                    Secured with argon2id hashed credentials in Neon Auth.
+                    Secured with argon2id encrypted credentials.
                   </p>
                 </div>
               </div>
@@ -416,7 +383,7 @@ export default function SettingsPage() {
           <div>
             <h3 className="text-base font-bold text-white tracking-tight">Active Session</h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              Terminate your current authenticated session on this device.
+              Sign out from this device to end your active monitoring session.
             </p>
           </div>
 
@@ -426,7 +393,7 @@ export default function SettingsPage() {
             className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-space-850 hover:bg-space-800 text-slate-200 hover:text-white border border-space-700 font-semibold text-xs transition-colors cursor-pointer"
           >
             <LogOut className="w-4 h-4 text-rose-400" />
-            <span>Sign Out of Web Radar</span>
+            <span>Sign Out</span>
           </button>
         </div>
 
@@ -438,7 +405,7 @@ export default function SettingsPage() {
               Danger Zone
             </h3>
             <p className="text-xs text-rose-400/80 mt-0.5">
-              Permanently delete your Web Radar tenant workspace and all configured Watches.
+              Permanently delete your account, active monitors, and snapshot history.
             </p>
           </div>
 
@@ -446,7 +413,7 @@ export default function SettingsPage() {
             <div>
               <p className="text-xs font-semibold text-white">Delete Entire Account</p>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                Once deleted, your active scraper schedules and semantic change histories cannot be recovered.
+                Once deleted, your active scraper schedules and change intelligence cannot be recovered.
               </p>
             </div>
 
@@ -477,7 +444,7 @@ export default function SettingsPage() {
             </div>
 
             <p className="text-xs text-slate-300 leading-relaxed">
-              This will permanently delete your Neon Auth profile, all associated watches, run history, and snapshot intelligence.
+              This will permanently delete your account, all associated watches, run history, and snapshot intelligence.
             </p>
 
             <div className="space-y-1.5">
@@ -501,7 +468,7 @@ export default function SettingsPage() {
                   setDeleteConfirmText("");
                 }}
                 disabled={deleting}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-space-900 hover:bg-space-850 transition-colors"
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-space-900 hover:bg-space-850 transition-colors cursor-pointer"
               >
                 Cancel
               </button>

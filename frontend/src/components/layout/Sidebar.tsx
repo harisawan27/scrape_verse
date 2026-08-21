@@ -194,7 +194,7 @@ export function Sidebar() {
       </div>
 
       {/* User Session Footer — connects directly to /settings */}
-      <div className="p-4 border-t border-space-700/50 bg-space-950/40 space-y-2.5">
+      <div className="p-4 border-t border-space-700/50 bg-space-950/40">
         <div className="flex items-center justify-between gap-2">
           <Link
             href="/settings"
@@ -234,20 +234,6 @@ export function Sidebar() {
             </button>
           )}
         </div>
-
-        {/* Connect / Link Google Button */}
-        {isAuthenticated && (
-          <button
-            type="button"
-            onClick={handleLinkGoogle}
-            disabled={linkingGoogle}
-            className="w-full flex items-center justify-center gap-2 py-1.5 px-2.5 rounded-lg bg-space-850 hover:bg-space-800 border border-space-700/70 text-slate-300 hover:text-white text-[11px] font-medium transition-all group cursor-pointer disabled:opacity-50"
-            title="Link Google account to enable 1-click Google Sign-In"
-          >
-            <GoogleIcon className="w-3.5 h-3.5 flex-shrink-0" />
-            <span>{linkingGoogle ? "Connecting..." : "Connect Google"}</span>
-          </button>
-        )}
       </div>
     </aside>
   );
