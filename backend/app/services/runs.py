@@ -351,6 +351,19 @@ class BrightDataRunExecutor:
                     default_currency=spec.get("currency", "PKR"),
                 )
 
+                # Product identity safety check (e.g. Daraz item ID mismatch)
+                from app.integrations.bright_data.payload import extract_product_identifier
+                watch_pid = extract_product_identifier(watch.url)
+                extracted_pid = extract_product_identifier(normalized_payload.get("url"))
+                if watch_pid and extracted_pid and watch_pid != extracted_pid:
+                    persisted_run.status = "failed"
+                    persisted_run.finished_at = utc_now()
+                    persisted_run.error_code = "target_identity_mismatch"
+                    persisted_run.error_detail = (
+                        f"Target product ID '{watch_pid}' does not match extracted product ID '{extracted_pid}'."
+                    )
+                    self.db.commit()
+                    return persisted_run
 
                 # Schema validation: verify required fields and valid numeric price
                 from app.services.self_healing import SelfHealingService, validate_product_payload

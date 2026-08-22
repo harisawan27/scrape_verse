@@ -111,3 +111,67 @@ def test_identical_second_snapshot_creates_no_changes(db):
 
     assert db.scalars(select(Change).where(Change.run_id == second.id)).all() == []
 
+
+def test_target_identity_mismatch_fails_run(db):
+    from app.integrations.bright_data import MockBrightDataAdapter
+    from app.services.runs import BrightDataRunExecutor
+
+    repository = WatchRepository(db)
+    user = repository.create_user(UserCreate(email=f"daraz-{uuid.uuid4()}@example.com"))
+    watch = repository.create(
+        WatchCreate.model_validate(
+            {
+                "user_id": user.id,
+                "url": "https://www.daraz.pk/products/test-item-i519675927-s3479476860.html",
+                "title": "Daraz Product",
+                "instruction": "Alert when price < 1000",
+                "monitoring_spec": {"field": "price", "currency": "PKR", "value": 1000},
+                "schedule": {
+                    "cadence": "hourly",
+                    "timezone": "UTC",
+                    "next_due_at": datetime(2026, 8, 18, tzinfo=timezone.utc).isoformat(),
+                },
+            }
+        )
+    )
+
+    # Return data for a DIFFERENT product ID: i999999999
+    adapter = MockBrightDataAdapter(
+        preset_data=[
+            {
+                "url": "https://www.daraz.pk/products/wrong-item-i999999999.html",
+                "title": "Wrong Product",
+                "price": 1000,
+                "currency": "PKR",
+            }
+        ]
+    )
+
+    run = RunCreationService(db).create(watch.id)
+    executor = BrightDataRunExecutor(db, adapter=adapter, default_collector_id="c_test")
+    finished_run = executor.execute(run)
+
+    assert finished_run.status == "failed"
+    assert finished_run.error_code == "target_identity_mismatch"
+    assert "Target product ID '519675927' does not match" in (finished_run.error_detail or "")
+
+
+def test_watch_overview_returns_all_runs_and_alerts(db):
+    repository = WatchRepository(db)
+    watch = make_watch(db)
+
+    # Create 3 runs
+    create_and_execute(db, watch, payload={"price": 3000, "currency": "PKR"}, scheduled_for=datetime(2026, 8, 18, 10, 0, tzinfo=timezone.utc))
+    create_and_execute(db, watch, payload={"price": 2800, "currency": "PKR"}, scheduled_for=datetime(2026, 8, 18, 11, 0, tzinfo=timezone.utc))
+    create_and_execute(db, watch, payload={"price": 2400, "currency": "PKR"}, scheduled_for=datetime(2026, 8, 18, 12, 0, tzinfo=timezone.utc))
+
+    overview = repository.get_watch_overview(watch.id)
+    assert overview is not None
+    assert len(overview.runs) == 3
+    # Check newest first
+    assert overview.runs[0].scheduled_for > overview.runs[1].scheduled_for
+    # Check attached snapshot
+    assert overview.runs[0].snapshot is not None
+    assert overview.runs[0].snapshot.payload["price"] == 2400
+
+

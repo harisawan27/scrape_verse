@@ -206,7 +206,7 @@ export function WatchDetailHero({
                 {latest_value.availability.replace(/_/g, " ")}
               </span>
             ) : (
-              <span className="text-xs text-slate-400 font-mono">In Stock</span>
+              <span className="text-xs text-slate-400 font-mono">—</span>
             )}
 
             {latest_value?.rating && (
@@ -217,7 +217,7 @@ export function WatchDetailHero({
             )}
           </div>
           <span className="text-[11px] text-slate-400 mt-1.5 block truncate">
-            Merchant: {latest_snapshot?.payload?.seller || "Daraz Verified"}
+            Merchant: {latest_snapshot?.payload?.seller || latest_value?.seller || "—"}
           </span>
         </div>
 

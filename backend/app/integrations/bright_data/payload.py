@@ -70,6 +70,8 @@ def map_bright_data_to_snapshot(
         or ("in_stock" if price is not None else "unknown")
     )
 
+    seller = item.get("seller") or item.get("merchant") or item.get("store") or item.get("seller_name")
+
     # Preserve all other extracted properties in extracted_fields
     known_keys = {"url", "link", "product_url", "title", "name", "product_title", "price", "final_price", "current_price", "sale_price", "currency", "currency_symbol", "price_currency", "availability", "stock_status", "in_stock"}
     extra_fields = {k: v for k, v in item.items() if k not in known_keys}
@@ -80,6 +82,18 @@ def map_bright_data_to_snapshot(
         "price": price,
         "currency": str(currency) if currency else default_currency,
         "availability": str(availability),
+        "seller": str(seller) if seller else None,
         "extracted_fields": extra_fields,
     }
+
+
+def extract_product_identifier(url: str | None) -> str | None:
+    """Extract platform-specific product identifier (e.g., Daraz item ID `i519675927`)."""
+    if not url:
+        return None
+    match = re.search(r"-?i(\d+)", url)
+    if match:
+        return match.group(1)
+    return None
+
 

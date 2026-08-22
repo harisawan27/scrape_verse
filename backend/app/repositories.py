@@ -295,8 +295,10 @@ class WatchRepository:
             ScraperRepairRead.model_validate(repairs[0]) if repairs else None
         )
 
-        latest_run = WatchRunRead.model_validate(runs[0]) if runs else None
-        latest_event = AlertRead.model_validate(alerts[0]) if alerts else None
+        runs_read = [WatchRunRead.model_validate(r) for r in runs]
+        alerts_read = [AlertRead.model_validate(a) for a in alerts]
+        latest_run = runs_read[0] if runs_read else None
+        latest_event = alerts_read[0] if alerts_read else None
         snapshot_read = SnapshotRead.model_validate(latest_snapshot) if latest_snapshot else None
 
         return WatchOverviewRead(
@@ -304,7 +306,9 @@ class WatchRepository:
             health_status=health_status,
             latest_snapshot=snapshot_read,
             latest_run=latest_run,
+            runs=runs_read,
             latest_event=latest_event,
+            alerts=alerts_read,
             active_repair=active_repair,
             latest_value=latest_value,
             stats=stats,

@@ -271,7 +271,9 @@ class WatchOverviewRead(BaseModel):
     health_status: HealthStatus
     latest_snapshot: SnapshotRead | None = None
     latest_run: WatchRunRead | None = None
+    runs: list[WatchRunRead] = Field(default_factory=list)
     latest_event: AlertRead | None = None
+    alerts: list[AlertRead] = Field(default_factory=list)
     active_repair: ScraperRepairRead | None = None
     latest_value: ProductCurrentValue | None = None
     stats: WatchOverviewStats = Field(default_factory=WatchOverviewStats)

@@ -52,11 +52,20 @@ export default function WatchDetailPage() {
       const res = await api.getWatchOverview(watchId);
       setOverview(res);
 
-      if (res.latest_run) {
+      if (res.runs && res.runs.length > 0) {
+        setRuns(res.runs);
+      } else if (res.latest_run) {
         setRuns([res.latest_run]);
+      } else {
+        setRuns([]);
       }
-      if (res.latest_event) {
+
+      if (res.alerts && res.alerts.length > 0) {
+        setAlerts(res.alerts);
+      } else if (res.latest_event) {
         setAlerts([res.latest_event]);
+      } else {
+        setAlerts([]);
       }
     } catch (err: any) {
       console.error("Failed to load watch overview:", err);

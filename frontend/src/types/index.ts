@@ -4,6 +4,8 @@ export interface ProductCurrentValue {
   price: number | null;
   currency: string | null;
   availability: string | null;
+  seller?: string | null;
+  title?: string | null;
   rating: number | null;
   reviews_count: number | null;
   snapshot_id: string | null;
@@ -87,10 +89,13 @@ export interface WatchRun {
   scheduled_for: string;
   status: "pending" | "running" | "succeeded" | "failed";
   started_at: string | null;
-  completed_at: string | null;
+  finished_at?: string | null;
+  completed_at?: string | null;
   error_code: string | null;
+  error_detail?: string | null;
   bright_data_collection_id: string | null;
-  created_at: string;
+  created_at?: string;
+  snapshot?: Snapshot | null;
 }
 
 export interface AlertEvent {
@@ -136,7 +141,9 @@ export interface WatchOverview {
   health_status: HealthStatus;
   latest_snapshot: Snapshot | null;
   latest_run: WatchRun | null;
+  runs?: WatchRun[];
   latest_event: AlertEvent | null;
+  alerts?: AlertEvent[];
   active_repair: ScraperRepair | null;
   latest_value: ProductCurrentValue | null;
   stats: WatchOverviewStats;
