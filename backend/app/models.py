@@ -6,6 +6,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     String,
@@ -39,6 +40,7 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     watches: Mapped[list["Watch"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    conversations: Mapped[list["Conversation"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 
@@ -60,6 +62,7 @@ class Watch(Base):
     runs: Mapped[list["WatchRun"]] = relationship(back_populates="watch", cascade="all, delete-orphan")
     alerts: Mapped[list["Alert"]] = relationship(back_populates="watch", cascade="all, delete-orphan")
     repairs: Mapped[list["ScraperRepair"]] = relationship(back_populates="watch", cascade="all, delete-orphan")
+    targets: Mapped[list["WatchTarget"]] = relationship(back_populates="watch", cascade="all, delete-orphan")
 
 
 
@@ -191,5 +194,51 @@ class ScraperRepair(Base):
 
     watch: Mapped[Watch] = relationship(back_populates="repairs")
     run: Mapped[WatchRun] = relationship(back_populates="repair")
+
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    id: Mapped[str] = mapped_column(UUID_TYPE, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(UUID_TYPE, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False, default="New Task")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now)
+
+    user: Mapped[User] = relationship(back_populates="conversations")
+    messages: Mapped[list["ConversationMessage"]] = relationship(
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        order_by="ConversationMessage.created_at",
+    )
+
+
+class ConversationMessage(Base):
+    __tablename__ = "conversation_messages"
+
+    id: Mapped[str] = mapped_column(UUID_TYPE, primary_key=True, default=lambda: str(uuid.uuid4()))
+    conversation_id: Mapped[str] = mapped_column(UUID_TYPE, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(32), nullable=False, default="user")
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    message_type: Mapped[str] = mapped_column(String(64), nullable=False, default="user")
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+    conversation: Mapped[Conversation] = relationship(back_populates="messages")
+
+
+class WatchTarget(Base):
+    __tablename__ = "watch_targets"
+
+    id: Mapped[str] = mapped_column(UUID_TYPE, primary_key=True, default=lambda: str(uuid.uuid4()))
+    watch_id: Mapped[str] = mapped_column(UUID_TYPE, ForeignKey("watches.id", ondelete="CASCADE"), nullable=False, index=True)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    target_type: Mapped[str] = mapped_column(String(64), nullable=False, default="primary")
+    source_confidence: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+    watch: Mapped[Watch] = relationship(back_populates="targets")
+
 
 

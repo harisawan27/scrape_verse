@@ -292,6 +292,97 @@ class ActivityEventRead(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
 
 
+# --- Conversational Intelligence & Target Schemas ---
+
+class DiscoveredSource(BaseModel):
+    url: str
+    title: str
+    snippet: str | None = None
+    target_type: str = "primary"
+    confidence: float = 1.0
+    official: bool = True
+
+
+class WatchTargetCreate(BaseModel):
+    url: str
+    target_type: str = "primary"
+    source_confidence: float = 1.0
+    enabled: bool = True
+
+
+class WatchTargetRead(BaseModel):
+    id: str
+    watch_id: str
+    url: str
+    target_type: str
+    source_confidence: float
+    enabled: bool
+    created_at: datetime
+
+
+class ConversationMessageRead(BaseModel):
+    id: str
+    conversation_id: str
+    role: str
+    content: str
+    message_type: str
+    metadata_: dict[str, Any] = Field(default_factory=dict, alias="metadata")
+    created_at: datetime
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ConversationSummaryRead(BaseModel):
+    id: str
+    user_id: str
+    title: str
+    created_at: datetime
+    updated_at: datetime
+    message_count: int = 0
+    latest_message_preview: str | None = None
+
+
+class ConversationRead(BaseModel):
+    id: str
+    user_id: str
+    title: str
+    created_at: datetime
+    updated_at: datetime
+    messages: list[ConversationMessageRead] = Field(default_factory=list)
+
+
+class ConversationalPromptRequest(BaseModel):
+    conversation_id: str | None = None
+    message: str
+    url: str | None = None
+    selected_option: str | None = None
+
+
+class ConversationalResponseRead(BaseModel):
+    conversation_id: str
+    message_id: str
+    role: str = "assistant"
+    mode: str  # "ASK", "WATCH", "ASK_AND_WATCH", "CLARIFICATION"
+    content: str
+    message_type: str  # "answer", "watch_created", "clarification", "scan_result", "error"
+    sources: list[DiscoveredSource] = Field(default_factory=list)
+    watch: WatchRead | None = None
+    clarification_options: list[str] = Field(default_factory=list)
+    metadata_: dict[str, Any] = Field(default_factory=dict)
+
+
+class WatchChatRequest(BaseModel):
+    message: str
+
+
+class WatchChatResponse(BaseModel):
+    reply: str
+    action_taken: str | None = None  # e.g., "rule_updated", "cadence_changed", "scan_triggered", "status_changed"
+    action_details: dict[str, Any] = Field(default_factory=dict)
+    updated_watch: WatchOverviewRead | None = None
+
+
+
 
 
 

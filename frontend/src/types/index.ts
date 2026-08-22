@@ -209,3 +209,85 @@ export interface AuthResponse {
   user: User;
 }
 
+// --- Phase 8: Conversational Web Radar Types ---
+
+export interface DiscoveredSource {
+  url: string;
+  title: string;
+  snippet?: string | null;
+  target_type: string;
+  confidence: number;
+  official: boolean;
+}
+
+export interface WatchTarget {
+  id: string;
+  watch_id: string;
+  url: string;
+  target_type: string;
+  source_confidence: number;
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface ConversationMessage {
+  id: string;
+  conversation_id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  message_type: "user" | "answer" | "scan_result" | "watch_created" | "clarification" | "error";
+  metadata?: {
+    mode?: "ASK" | "WATCH" | "ASK_AND_WATCH" | "CLARIFICATION";
+    sources?: DiscoveredSource[];
+    watch_id?: string | null;
+    watch_title?: string | null;
+    clarification_options?: string[];
+    price?: number;
+    original_price?: number;
+    currency?: string;
+    rating?: number;
+    [key: string]: any;
+  };
+  created_at: string;
+}
+
+export interface ConversationSummary {
+  id: string;
+  user_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  latest_message_preview?: string | null;
+}
+
+export interface Conversation {
+  id: string;
+  user_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  messages: ConversationMessage[];
+}
+
+export interface ConversationalResponse {
+  conversation_id: string;
+  message_id: string;
+  role: string;
+  mode: "ASK" | "WATCH" | "ASK_AND_WATCH" | "CLARIFICATION";
+  content: string;
+  message_type: string;
+  sources: DiscoveredSource[];
+  watch?: Watch | null;
+  clarification_options: string[];
+  metadata: Record<string, any>;
+}
+
+export interface WatchChatResponse {
+  reply: string;
+  action_taken?: string | null;
+  action_details?: Record<string, any>;
+  updated_watch?: WatchOverview | null;
+}
+
+

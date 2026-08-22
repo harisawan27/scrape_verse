@@ -281,6 +281,87 @@ export const api = {
   async checkHealth(): Promise<{ status: string }> {
     return request<{ status: string }>("/health");
   },
+
+  // ==========================================================================
+  // Phase 8: Conversational Web Radar Client Methods
+  // ==========================================================================
+
+  /**
+   * Send a conversational query or monitoring instruction to Web Radar.
+   */
+  async sendConversationalPrompt(params: {
+    message: string;
+    url?: string;
+    conversation_id?: string;
+    selected_option?: string;
+  }): Promise<import("../types").ConversationalResponse> {
+    return request<import("../types").ConversationalResponse>("/v1/conversations", {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
+  },
+
+  /**
+   * Retrieve all recent conversations for the current user.
+   */
+  async getConversations(): Promise<import("../types").ConversationSummary[]> {
+    const res = await request<import("../types").ConversationSummary[]>("/v1/conversations").catch(() => []);
+    return Array.isArray(res) ? res : [];
+  },
+
+  /**
+   * Retrieve complete message history for a specific conversation.
+   */
+  async getConversation(id: string): Promise<import("../types").Conversation> {
+    return request<import("../types").Conversation>(`/v1/conversations/${encodeURIComponent(id)}`);
+  },
+
+  /**
+   * Delete a conversation.
+   */
+  async deleteConversation(id: string): Promise<void> {
+    return request<void>(`/v1/conversations/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  },
+
+  /**
+   * Chat about a specific watch with operational context & action execution.
+   */
+  async sendWatchChatPrompt(watchId: string, message: string): Promise<import("../types").WatchChatResponse> {
+    return request<import("../types").WatchChatResponse>(`/v1/watches/${encodeURIComponent(watchId)}/chat`, {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    });
+  },
+
+  /**
+   * List all target URLs for a watch.
+   */
+  async getWatchTargets(watchId: string): Promise<import("../types").WatchTarget[]> {
+    const res = await request<import("../types").WatchTarget[]>(`/v1/watches/${encodeURIComponent(watchId)}/targets`).catch(() => []);
+    return Array.isArray(res) ? res : [];
+  },
+
+  /**
+   * Add a target URL to a watch.
+   */
+  async addWatchTarget(watchId: string, target: { url: string; target_type?: string; source_confidence?: number }): Promise<import("../types").WatchTarget> {
+    return request<import("../types").WatchTarget>(`/v1/watches/${encodeURIComponent(watchId)}/targets`, {
+      method: "POST",
+      body: JSON.stringify(target),
+    });
+  },
+
+  /**
+   * Remove a target URL from a watch.
+   */
+  async removeWatchTarget(watchId: string, targetId: string): Promise<void> {
+    return request<void>(`/v1/watches/${encodeURIComponent(watchId)}/targets/${encodeURIComponent(targetId)}`, {
+      method: "DELETE",
+    });
+  },
 };
 
 export { ApiError };
+

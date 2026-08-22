@@ -1,8 +1,22 @@
 from datetime import datetime
+from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Alert, Change, ScraperRepair, Schedule, Snapshot, User, Watch, WatchRun
+from app.models import (
+    Alert,
+    Change,
+    Conversation,
+    ConversationMessage,
+    ScraperRepair,
+    Schedule,
+    Snapshot,
+    User,
+    Watch,
+    WatchRun,
+    WatchTarget,
+    utc_now,
+)
 from app.schemas import (
     ActivityEventRead,
     AlertRead,
@@ -59,6 +73,9 @@ class WatchRepository:
 
     def get_user_by_email(self, email: str) -> User | None:
         return self.db.scalar(select(User).where(User.email == email))
+
+    def get_user_watch(self, user_id: str, watch_id: str) -> Watch | None:
+        return self.get(watch_id, user_id=user_id)
 
     def create(self, data: WatchCreate) -> Watch:
         watch = Watch(
@@ -340,3 +357,100 @@ class WatchRepository:
                 )
             )
         return activity
+
+    # --- Conversational Intelligence Repositories ---
+
+    def create_conversation(self, user_id: str, title: str = "New Task") -> Conversation:
+        conversation = Conversation(
+            user_id=user_id,
+            title=title,
+        )
+        self.db.add(conversation)
+        self.db.commit()
+        self.db.refresh(conversation)
+        return conversation
+
+    def get_conversation(self, conversation_id: str, user_id: str | None = None) -> Conversation | None:
+        statement = select(Conversation).where(Conversation.id == conversation_id)
+        if user_id:
+            statement = statement.where(Conversation.user_id == user_id)
+        return self.db.scalar(statement)
+
+    def list_conversations_for_user(self, user_id: str, limit: int = 50) -> list[Conversation]:
+        statement = (
+            select(Conversation)
+            .where(Conversation.user_id == user_id)
+            .order_by(Conversation.updated_at.desc())
+            .limit(limit)
+        )
+        return list(self.db.scalars(statement).all())
+
+    def delete_conversation(self, conversation_id: str, user_id: str) -> bool:
+        conversation = self.get_conversation(conversation_id, user_id=user_id)
+        if not conversation:
+            return False
+        self.db.delete(conversation)
+        self.db.commit()
+        return True
+
+    def add_conversation_message(
+        self,
+        conversation_id: str,
+        role: str,
+        content: str,
+        message_type: str = "user",
+        metadata: dict[str, Any] | None = None,
+    ) -> ConversationMessage:
+        msg = ConversationMessage(
+            conversation_id=conversation_id,
+            role=role,
+            content=content,
+            message_type=message_type,
+            metadata_=metadata or {},
+        )
+        self.db.add(msg)
+        # Update conversation updated_at
+        conversation = self.db.get(Conversation, conversation_id)
+        if conversation:
+            conversation.updated_at = utc_now()
+        self.db.commit()
+        self.db.refresh(msg)
+        return msg
+
+    # --- Watch Targets Repositories ---
+
+    def list_targets_for_watch(self, watch_id: str) -> list[WatchTarget]:
+        statement = (
+            select(WatchTarget)
+            .where(WatchTarget.watch_id == watch_id)
+            .order_by(WatchTarget.created_at.asc())
+        )
+        return list(self.db.scalars(statement).all())
+
+    def add_watch_target(
+        self,
+        watch_id: str,
+        url: str,
+        target_type: str = "primary",
+        source_confidence: float = 1.0,
+    ) -> WatchTarget:
+        target = WatchTarget(
+            watch_id=watch_id,
+            url=url,
+            target_type=target_type,
+            source_confidence=source_confidence,
+            enabled=True,
+        )
+        self.db.add(target)
+        self.db.commit()
+        self.db.refresh(target)
+        return target
+
+    def remove_watch_target(self, watch_id: str, target_id: str) -> bool:
+        target = self.db.get(WatchTarget, target_id)
+        if not target or target.watch_id != watch_id:
+            return False
+        self.db.delete(target)
+        self.db.commit()
+        return True
+

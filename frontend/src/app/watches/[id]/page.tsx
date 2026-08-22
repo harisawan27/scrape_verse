@@ -221,8 +221,14 @@ export default function WatchDetailPage() {
             </div>
             <RunHistory runs={runs} />
           </div>
-
         </div>
+
+        {/* 4. Phase 8: Contextual Watch Chat & Action Assistant */}
+        <WatchDetailChatSection
+          watchId={overview.watch.id}
+          watchTitle={overview.watch.title}
+          onActionExecuted={() => loadWatchOverview(false)}
+        />
       </div>
 
       {/* Watch Controls Modal */}
@@ -239,7 +245,161 @@ export default function WatchDetailPage() {
           router.push("/watches");
         }}
       />
-
     </div>
   );
 }
+
+interface ChatMsg {
+  role: "user" | "assistant";
+  content: string;
+  action_taken?: string | null;
+}
+
+function WatchDetailChatSection({
+  watchId,
+  watchTitle,
+  onActionExecuted,
+}: {
+  watchId: string;
+  watchTitle: string;
+  onActionExecuted: () => void;
+}) {
+  const [messages, setMessages] = useState<ChatMsg[]>([
+    {
+      role: "assistant",
+      content: `I'm monitoring **${watchTitle}**. Ask me why alerts have or haven't fired, or tell me to update thresholds, change check cadence, or trigger an immediate scan.`,
+    },
+  ]);
+  const [input, setInput] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(false);
+
+  const handleSend = async (msgText?: string) => {
+    const text = msgText || input;
+    if (!text.trim() || loading) return;
+
+    const userMsg: ChatMsg = { role: "user", content: text };
+    setMessages((prev) => [...prev, userMsg]);
+    if (!msgText) setInput("");
+    setLoading(true);
+
+    try {
+      const res = await api.sendWatchChatPrompt(watchId, text);
+      const asstMsg: ChatMsg = {
+        role: "assistant",
+        content: res.reply,
+        action_taken: res.action_taken,
+      };
+      setMessages((prev) => [...prev, asstMsg]);
+      if (res.action_taken) {
+        onActionExecuted();
+      }
+    } catch (err: any) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `Error: ${err.message || "Failed to process command."}`,
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const quickChips = [
+    "Why haven't you alerted me yet?",
+    "Change it to PKR 1,200",
+    "Check it again now",
+    "Check every 6 hours",
+  ];
+
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-900/80 backdrop-blur-md p-5 md:p-6 space-y-4 shadow-lg">
+      <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-xl bg-radar-cyan/15 text-radar-cyan">
+            <Radar className="w-4 h-4 animate-spin" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-white">Watch Intelligence & Action Assistant</h3>
+            <p className="text-[11px] text-slate-400 font-mono">
+              Ask questions or command changes directly in natural language
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Message Stream */}
+      <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+        {messages.map((m, idx) => {
+          const isUser = m.role === "user";
+          return (
+            <div key={idx} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+              <div
+                className={`max-w-xl p-3.5 rounded-xl text-xs leading-relaxed ${
+                  isUser
+                    ? "bg-radar-cyan/20 border border-radar-cyan/30 text-white rounded-br-none"
+                    : "bg-slate-950/80 border border-slate-800 text-slate-200 rounded-bl-none"
+                }`}
+              >
+                <div className="whitespace-pre-wrap">{m.content}</div>
+                {m.action_taken && (
+                  <div className="mt-2 pt-2 border-t border-slate-800 flex items-center gap-1.5 text-[11px] font-mono text-emerald-400">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>Action Executed: {m.action_taken.replace(/_/g, " ")}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        {loading && (
+          <div className="flex justify-start">
+            <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-slate-400 text-xs font-mono flex items-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-radar-cyan" />
+              <span>Analyzing watch context...</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Quick Action Chips */}
+      <div className="flex flex-wrap gap-2 pt-1">
+        {quickChips.map((chip, idx) => (
+          <button
+            key={idx}
+            onClick={() => handleSend(chip)}
+            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 border border-slate-700 text-[11px] text-slate-300 hover:text-white transition-all"
+          >
+            {chip}
+          </button>
+        ))}
+      </div>
+
+      {/* Input Bar */}
+      <div className="flex items-center gap-2 pt-1">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              handleSend();
+            }
+          }}
+          placeholder="Ask Web Radar about this watch or tell it to change thresholds/cadence..."
+          className="flex-1 px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-radar-cyan/60 text-xs text-white placeholder-slate-500 focus:outline-none"
+        />
+        <button
+          onClick={() => handleSend()}
+          disabled={!input.trim() || loading}
+          className="px-4 py-2.5 rounded-xl bg-radar-cyan text-slate-950 text-xs font-bold hover:bg-radar-cyan/90 disabled:opacity-40 transition-all flex items-center gap-1.5 shrink-0"
+        >
+          <span>Send</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
