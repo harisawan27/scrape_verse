@@ -1,8 +1,8 @@
 import re
 import json
 import logging
-from typing import Any, Protocol
-from datetime import datetime, timezone
+from typing import Any
+from urllib.parse import urlparse
 import httpx
 
 from app.schemas import DiscoveredSource
@@ -50,9 +50,9 @@ class ConversationalPlanResult:
 class ConversationalDiscoveryEngine:
     """
     Intelligent Conversational Engine for Web Radar.
-    Performs intent classification (ASK vs WATCH vs ASK_AND_WATCH),
-    Google Search discovery for public web entities without requiring URLs,
-    grounded source citation, and structured watch synthesis.
+    Performs real-time Google Search discovery & grounding via Gemini API,
+    intent classification (ASK vs WATCH vs ASK_AND_WATCH vs CLARIFICATION),
+    and structured monitoring synthesis without any hardcoded mock data.
     """
 
     def __init__(
@@ -73,276 +73,293 @@ class ConversationalDiscoveryEngine:
         selected_option: str | None = None,
         history: list[dict[str, str]] | None = None,
     ) -> ConversationalPlanResult:
-        """Process user message and return structured conversational response with actions."""
+        """Process user message using real Gemini Google Search grounding."""
         msg = message.strip()
+        if selected_option:
+            msg = f"User selected: {selected_option}. Context: {message}"
+
         msg_lower = msg.lower()
 
-        # 1. Ambiguity handling (e.g. "BAU University" without specific country/selection)
-        if ("bau university" in msg_lower or "bau " in msg_lower) and not selected_option and not any(k in msg_lower for k in ["bahçeşehir", "bahcesehir", "beirut", "bangladesh"]):
+        # Classify intent mode from message semantics
+        is_watch_request = any(k in msg_lower for k in [
+            "watch", "monitor", "alert me", "notify me", "tell me when",
+            "track", "keep watching", "check every", "schedule"
+        ])
+        is_ask_request = any(k in msg_lower for k in [
+            "find", "what is", "contact", "email", "phone", "check",
+            "how to", "where is", "info", "information", "tell me", "when"
+        ])
+
+        if is_watch_request and is_ask_request:
+            intended_mode = ConversationalIntent.ASK_AND_WATCH
+        elif is_watch_request:
+            intended_mode = ConversationalIntent.WATCH
+        else:
+            intended_mode = ConversationalIntent.ASK
+
+        # If live Gemini API key is available, execute real Google Search grounded discovery
+        if self.gemini_api_key:
+            try:
+                return self._call_gemini_grounded_discovery(
+                    message=msg,
+                    raw_input=message,
+                    explicit_url=url,
+                    intended_mode=intended_mode,
+                    selected_option=selected_option,
+                )
+            except Exception as exc:
+                logger.exception("Gemini Grounded Discovery failed: %s", exc)
+
+        # Fallback only if Gemini API is unreachable
+        return self._build_offline_fallback(msg, url, intended_mode)
+
+    def _call_gemini_grounded_discovery(
+        self,
+        *,
+        message: str,
+        raw_input: str,
+        explicit_url: str | None,
+        intended_mode: str,
+        selected_option: str | None,
+    ) -> ConversationalPlanResult:
+        """Execute real Google Search grounded request against Google Generative Language API or OpenRouter."""
+        prompt = (
+            f"You are Web Radar's Autonomous Conversational Web Intelligence Agent.\n"
+            f"User Query: {message}\n\n"
+            f"Instructions:\n"
+            f"1. Use search discovery to identify accurate, real-world information and official website URLs.\n"
+            f"2. If the user refers to an ambiguous acronym or entity with multiple well-known possibilities (such as 'BAU' with no country specified), ask for clarification.\n"
+            f"3. Always provide clear, well-structured, factual answers and cite official URLs.\n"
+            f"4. If monitoring is requested, identify the most relevant official URLs (e.g. careers, admissions, product page)."
+        )
+
+        sources: list[DiscoveredSource] = []
+        seen_urls = set()
+
+        if self.gemini_api_key and self.gemini_api_key.startswith("sk-or-v1-"):
+            # OpenRouter Gateway
+            endpoint = "https://openrouter.ai/api/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {self.gemini_api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://webradar.dev",
+                "X-Title": "Web Radar",
+            }
+            payload = {
+                "model": "google/gemini-2.5-flash",
+                "messages": [{"role": "user", "content": prompt}],
+                "plugins": [{"id": "web"}],
+                "max_tokens": 1000,
+            }
+            with httpx.Client(timeout=25.0) as client:
+                response = client.post(endpoint, headers=headers, json=payload)
+                if response.status_code != 200:
+                    raise RuntimeError(f"OpenRouter API returned status {response.status_code}: {response.text}")
+                data = response.json()
+
+            choices = data.get("choices", [])
+            if not choices:
+                raise RuntimeError("No choices returned from OpenRouter API")
+            text_content = choices[0].get("message", {}).get("content", "").strip()
+
+            # Extract URLs and titles from markdown links or text
+            md_links = re.findall(r"\[([^\]]+)\]\((https?://[^\s)]+)\)", text_content)
+            for title, uri in md_links:
+                if uri not in seen_urls:
+                    seen_urls.add(uri)
+                    sources.append(
+                        DiscoveredSource(
+                            url=uri,
+                            title=title.strip(),
+                            target_type="primary",
+                            confidence=0.95,
+                            official=True,
+                        )
+                    )
+
+            raw_urls = re.findall(r"https?://[^\s)\]\"'>]+", text_content)
+            for uri in raw_urls:
+                uri_clean = uri.rstrip(".,;)")
+                if uri_clean not in seen_urls:
+                    seen_urls.add(uri_clean)
+                    parsed = urlparse(uri_clean)
+                    domain = parsed.netloc or uri_clean
+                    sources.append(
+                        DiscoveredSource(
+                            url=uri_clean,
+                            title=domain,
+                            target_type="primary",
+                            confidence=0.90,
+                            official=True,
+                        )
+                    )
+
+        else:
+            # Direct Google Gemini Generative Language API with Google Search Grounding
+            endpoint = f"{self.base_url}/models/{self.model_name}:generateContent?key={self.gemini_api_key}"
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "tools": [{"google_search": {}}],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "maxOutputTokens": 1000,
+                }
+            }
+
+            with httpx.Client(timeout=25.0) as client:
+                response = client.post(endpoint, json=payload)
+                if response.status_code != 200:
+                    raise RuntimeError(f"Gemini API returned status {response.status_code}: {response.text}")
+
+                data = response.json()
+
+            candidates = data.get("candidates", [])
+            if not candidates:
+                raise RuntimeError("No candidates returned from Gemini API")
+
+            candidate = candidates[0]
+            content_parts = candidate.get("content", {}).get("parts", [])
+            text_content = "".join([p.get("text", "") for p in content_parts if "text" in p]).strip()
+
+            # Extract Grounded Source URLs from Google Search Grounding Metadata
+            grounding_meta = candidate.get("groundingMetadata", {})
+            grounding_chunks = grounding_meta.get("groundingChunks", [])
+
+            for chunk in grounding_chunks:
+                web = chunk.get("web", {})
+                uri = web.get("uri")
+                title = web.get("title") or ""
+                if uri and uri not in seen_urls:
+                    seen_urls.add(uri)
+                    parsed = urlparse(uri)
+                    domain = parsed.netloc or uri
+                    sources.append(
+                        DiscoveredSource(
+                            url=uri,
+                            title=title if title else domain,
+                            target_type="primary",
+                            confidence=0.95,
+                            official=True,
+                        )
+                    )
+
+                # Determine target type
+                target_type = "primary"
+                uri_lower = uri.lower()
+                title_lower = title.lower()
+                if "career" in uri_lower or "job" in uri_lower or "vacanc" in uri_lower:
+                    target_type = "careers"
+                elif "scholarship" in uri_lower or "burs" in uri_lower:
+                    target_type = "scholarships"
+                elif "admission" in uri_lower or "ogrenci" in uri_lower:
+                    target_type = "admissions"
+                elif "contact" in uri_lower or "about" in uri_lower:
+                    target_type = "contact"
+                elif "product" in uri_lower or "item" in uri_lower or "daraz" in uri_lower:
+                    target_type = "product"
+
+                sources.append(
+                    DiscoveredSource(
+                        url=uri,
+                        title=title if title else domain,
+                        target_type=target_type,
+                        confidence=0.95,
+                        official=True,
+                    )
+                )
+
+        # Check for ambiguity in response or query
+        is_clarification = False
+        clarification_options: list[str] = []
+
+        if not selected_option and (
+            "could you please clarify" in text_content.lower()
+            or "which one" in text_content.lower()
+            or "multiple" in text_content.lower()
+            or "top possibilities" in text_content.lower()
+            or "can refer to several" in text_content.lower()
+        ):
+            is_clarification = True
+            # Parse bullet items dynamically from Gemini's response
+            bullet_matches = re.findall(r"^[*\-•]\s+\*?\*?([^\n*]+)\*?\*?", text_content, re.MULTILINE)
+            for bm in bullet_matches:
+                cleaned = bm.strip("*:•- ")
+                if cleaned and len(cleaned) > 3 and not cleaned.lower().startswith("if you"):
+                    clarification_options.append(cleaned)
+
+            if not clarification_options:
+                clarification_options = [
+                    "Please specify the exact organization or country",
+                ]
+
+        if is_clarification:
             return ConversationalPlanResult(
                 mode=ConversationalIntent.CLARIFICATION,
-                content="I found multiple well-known institutions matching **BAU**. Which one would you like me to monitor?",
-                clarification_options=[
-                    "Bahçeşehir University (Istanbul, Türkiye)",
-                    "Beirut Arab University (Beirut, Lebanon)",
-                    "Bangladesh Agricultural University (Mymensingh, Bangladesh)",
-                ],
-                metadata={"entity": "BAU"},
-            )
-
-        # 2. Handle clarification response if user selected an option
-        if selected_option:
-            if "bahçeşehir" in selected_option.lower() or "bahcesehir" in selected_option.lower():
-                msg = f"Watch Bahçeşehir University for new jobs"
-                msg_lower = msg.lower()
-            elif "beirut" in selected_option.lower():
-                msg = f"Watch Beirut Arab University for new jobs"
-                msg_lower = msg.lower()
-            elif "bangladesh" in selected_option.lower():
-                msg = f"Watch Bangladesh Agricultural University for new jobs"
-                msg_lower = msg.lower()
-
-        # 3. Classify Mode: ASK vs WATCH vs ASK_AND_WATCH
-        is_watch_request = any(k in msg_lower for k in ["watch", "monitor", "alert me", "notify me", "tell me when", "track", "keep watching"])
-        is_ask_request = any(k in msg_lower for k in ["find", "what is", "contact", "email", "phone", "check", "how to", "where is", "info", "information"])
-
-        mode = ConversationalIntent.ASK
-        if is_watch_request and is_ask_request:
-            mode = ConversationalIntent.ASK_AND_WATCH
-        elif is_watch_request:
-            mode = ConversationalIntent.WATCH
-        else:
-            mode = ConversationalIntent.ASK
-
-        # Check for explicit single-target URL
-        extracted_url = url
-        if not extracted_url:
-            match_url = re.search(r"https?://[^\s]+", msg)
-            if match_url:
-                extracted_url = match_url.group(0).rstrip(".,;)")
-
-        # 4. Shopping Discovery (e.g., "Find an office chair on Daraz under 10k and alert me if it reaches 8k")
-        if "daraz" in msg_lower or ("chair" in msg_lower and "pkr" in msg_lower):
-            return self._handle_daraz_shopping_discovery(msg, extracted_url, mode)
-
-        # 5. University / Job / Admissions Discovery
-        if "istanbul university" in msg_lower or "istanbul" in msg_lower:
-            return self._handle_istanbul_university_discovery(msg, mode)
-
-        if "bahçeşehir" in msg_lower or "bahcesehir" in msg_lower or "bau" in msg_lower:
-            return self._handle_bau_university_discovery(msg, mode)
-
-        # 6. Generic Discovery with Gemini Search Grounding or Web Fallback
-        return self._handle_generic_discovery(msg, extracted_url, mode)
-
-    def _handle_istanbul_university_discovery(self, msg: str, mode: str) -> ConversationalPlanResult:
-        """Handle Istanbul University queries (Admissions Contact vs Scholarship Watch)."""
-        msg_lower = msg.lower()
-
-        if "scholarship" in msg_lower or "bachelor" in msg_lower:
-            # Mode: ASK_AND_WATCH or WATCH
-            sources = [
-                DiscoveredSource(
-                    url="https://ogrenci.istanbul.edu.tr/en/content/scholarships/bachelor-programs",
-                    title="Istanbul University — International Student Scholarships",
-                    target_type="scholarships",
-                    confidence=0.98,
-                    official=True,
-                ),
-                DiscoveredSource(
-                    url="https://international.istanbul.edu.tr/en/admissions/announcements",
-                    title="Istanbul University — International Academic Announcements",
-                    target_type="announcements",
-                    confidence=0.95,
-                    official=True,
-                ),
-            ]
-            content = (
-                "**Current Status:**\n"
-                "• **Undergraduate / Bachelor Scholarships:** Applications for the upcoming academic cycle are **not currently open** (last round closed in late spring).\n"
-                "• **Eligibility:** Non-Turkish international students with certified secondary school transcripts and YÖS / SAT equivalence.\n"
-                "• **Coverage:** Tuition waiver + partial dormitory stipend.\n\n"
-                "I have also set up autonomous background monitoring to watch for the official announcement when applications open."
-            )
-            return ConversationalPlanResult(
-                mode=ConversationalIntent.ASK_AND_WATCH if mode != ConversationalIntent.WATCH else ConversationalIntent.WATCH,
-                content=content,
-                sources=sources,
-                watch_title="Istanbul University Bachelor's Scholarship",
-                watch_url=sources[0].url,
-                watch_intent="Monitor undergraduate scholarship openings and international admissions announcements",
-                cadence_minutes=1440,
-                cadence_name="daily",
-                rules=[{"type": "availability_changed", "field": "status", "value": "applications_open"}],
-                targets=[
-                    {"url": s.url, "target_type": s.target_type, "source_confidence": s.confidence}
-                    for s in sources
-                ],
-            )
-        else:
-            # Scenario A: ASK — Contact Information
-            sources = [
-                DiscoveredSource(
-                    url="https://international.istanbul.edu.tr/en/content/about-us/contact",
-                    title="Istanbul University — International Academic Relations Office",
-                    target_type="contact",
-                    confidence=0.99,
-                    official=True,
-                ),
-                DiscoveredSource(
-                    url="https://www.istanbul.edu.tr/en/contact",
-                    title="Istanbul University — Official Contact & Rectorate",
-                    target_type="primary",
-                    confidence=0.96,
-                    official=True,
-                ),
-            ]
-            content = (
-                "**Scan complete.** I found Istanbul University's official international admissions and rectorate contact details:\n\n"
-                "• **International Office Email:** `iro@istanbul.edu.tr`\n"
-                "• **Student Affairs Email:** `ogrenci@istanbul.edu.tr`\n"
-                "• **Phone:** `+90 (212) 440 00 00` (Ext: 10051 / 10052)\n"
-                "• **Campus Address:** Istanbul University Main Campus, Beyazıt Square, Fatih / Istanbul, Türkiye"
-            )
-            return ConversationalPlanResult(
-                mode=ConversationalIntent.ASK,
-                content=content,
+                content=text_content if text_content else "I found multiple possibilities matching your request. Please select or specify:",
+                clarification_options=clarification_options,
                 sources=sources,
             )
 
-    def _handle_bau_university_discovery(self, msg: str, mode: str) -> ConversationalPlanResult:
-        """Scenario B: WATCH WITHOUT URL — Bahçeşehir University Jobs."""
-        sources = [
-            DiscoveredSource(
-                url="https://bau.edu.tr/icerik/3042-academic-and-administrative-vacancies",
-                title="Bahçeşehir University — Academic & Administrative Vacancies",
-                target_type="careers",
-                confidence=0.98,
-                official=True,
-            ),
-            DiscoveredSource(
-                url="https://bau.edu.tr/announcements",
-                title="Bahçeşehir University — Official Announcements",
-                target_type="announcements",
-                confidence=0.94,
-                official=True,
-            ),
+        # Resolve primary watch URL
+        primary_url = explicit_url
+        if not primary_url and sources:
+            primary_url = sources[0].url
+
+        # Synthesize Title
+        watch_title = raw_input[:60]
+        if sources and sources[0].title:
+            watch_title = sources[0].title[:60]
+
+        # Extract rules for shopping or availability
+        rules = []
+        msg_lower = raw_input.lower()
+        if "below" in msg_lower or "under" in msg_lower or "reach" in msg_lower:
+            match_val = re.search(r"(?:below|under|at|reaches|<)\s*(?:rs\.?|pkr|\$)?\s*(\d+(?:,\d+)*(?:\.\d+)?\s*k|\d+(?:,\d+)*(?:\.\d+)?)", msg_lower)
+            if match_val:
+                raw_v = match_val.group(1).replace(",", "").replace(" ", "").strip()
+                val = float(raw_v[:-1]) * 1000.0 if raw_v.endswith("k") else float(raw_v)
+                rules.append({"type": "price_below", "field": "price", "value": val, "currency": "PKR"})
+        elif intended_mode in (ConversationalIntent.WATCH, ConversationalIntent.ASK_AND_WATCH):
+            rules.append({"type": "availability_changed", "field": "status", "value": "updated"})
+
+        targets = [
+            {"url": s.url, "target_type": s.target_type, "source_confidence": s.confidence}
+            for s in sources
         ]
-        content = (
-            "I discovered Bahçeşehir University's official Careers and Vacancies portal (`bau.edu.tr`).\n\n"
-            "I've established an autonomous baseline and started watching for new academic and administrative job postings."
-        )
+
         return ConversationalPlanResult(
-            mode=ConversationalIntent.WATCH,
-            content=content,
+            mode=intended_mode,
+            content=text_content,
             sources=sources,
-            watch_title="Bahçeşehir University Job Openings",
-            watch_url=sources[0].url,
-            watch_intent="Monitor new job vacancies and academic career announcements at Bahçeşehir University",
+            watch_title=watch_title,
+            watch_url=primary_url,
+            watch_intent=raw_input,
             cadence_minutes=1440,
             cadence_name="daily",
-            rules=[{"type": "availability_changed", "field": "vacancies", "value": "new_postings"}],
-            targets=[
-                {"url": s.url, "target_type": s.target_type, "source_confidence": s.confidence}
-                for s in sources
-            ],
+            rules=rules,
+            targets=targets,
+            metadata={"grounded_chunks_count": len(sources)},
         )
 
-    def _handle_daraz_shopping_discovery(self, msg: str, url: str | None, mode: str) -> ConversationalPlanResult:
-        """Shopping Discovery on Daraz with verified price semantics."""
-        product_url = url or "https://www.daraz.pk/products/ergonomic-office-chair-high-back-mesh-swivel-executive-computer-desk-chair-i429810234-s20391823.html"
-        
-        threshold = 8000.0
-        match_thresh = re.search(r"(?:below|under|at|reaches|<)\s*(?:rs\.?|pkr)?\s*(\d+(?:,\d+)*(?:\.\d+)?\s*k|\d+(?:,\d+)*(?:\.\d+)?)", msg.lower())
-        if match_thresh:
-            raw_v = match_thresh.group(1).replace(",", "").replace(" ", "").strip()
-            threshold = float(raw_v[:-1]) * 1000.0 if raw_v.endswith("k") else float(raw_v)
-
-        sources = [
-            DiscoveredSource(
-                url=product_url,
-                title="Ergonomic High-Back Executive Mesh Office Chair — Daraz",
-                target_type="product",
-                confidence=0.99,
-                official=True,
-            )
-        ]
-        content = (
-            f"**Verified Product Match on Daraz:**\n\n"
-            f"• **Product:** Ergonomic High-Back Executive Mesh Office Chair\n"
-            f"• **Current Selling Price:** PKR 8,999 *(Original: PKR 12,500 • 28% off)*\n"
-            f"• **Rating:** 4.7 / 5.0 (142 verified reviews)\n"
-            f"• **Availability:** In Stock • Daraz Mall Verified Seller\n\n"
-            f"I have initiated a persistent watch with an alert set for when the price drops below **PKR {threshold:,.0f}**."
-        )
-        return ConversationalPlanResult(
-            mode=ConversationalIntent.WATCH,
-            content=content,
-            sources=sources,
-            watch_title="Daraz Ergonomic Office Chair",
-            watch_url=product_url,
-            watch_intent=f"Alert when price drops below PKR {threshold:,.0f}",
-            cadence_minutes=360,
-            cadence_name="every 6 hours",
-            rules=[{"type": "price_below", "field": "price", "value": threshold, "currency": "PKR"}],
-            targets=[{"url": product_url, "target_type": "primary", "source_confidence": 0.99}],
-            metadata={"price": 8999, "original_price": 12500, "currency": "PKR", "rating": 4.7},
-        )
-
-    def _handle_generic_discovery(self, msg: str, url: str | None, mode: str) -> ConversationalPlanResult:
-        """Generic web search and extraction using live Gemini Google Search or fallback."""
-        if self.gemini_api_key and url is None:
-            try:
-                endpoint = f"{self.base_url}/models/{self.model_name}:generateContent?key={self.gemini_api_key}"
-                payload = {
-                    "contents": [{"parts": [{"text": msg}]}],
-                    "tools": [{"google_search": {}}],
-                }
-                with httpx.Client(timeout=15.0) as client:
-                    r = client.post(endpoint, json=payload)
-                    if r.status_code == 200:
-                        data = r.json()
-                        cand = data.get("candidates", [{}])[0]
-                        text = "".join([p.get("text", "") for p in cand.get("content", {}).get("parts", []) if "text" in p])
-                        grounding = cand.get("groundingMetadata", {})
-                        chunks = grounding.get("groundingChunks", [])
-                        sources = []
-                        for ch in chunks:
-                            web = ch.get("web", {})
-                            if web.get("uri"):
-                                sources.append(
-                                    DiscoveredSource(
-                                        url=web.get("uri"),
-                                        title=web.get("title") or web.get("uri"),
-                                        confidence=0.90,
-                                        official=True,
-                                    )
-                                )
-                        if text:
-                            return ConversationalPlanResult(
-                                mode=mode,
-                                content=text,
-                                sources=sources,
-                                watch_title=msg[:50],
-                                watch_url=sources[0].url if sources else None,
-                            )
-            except Exception as e:
-                logger.warning("Live Gemini Google Search failed, falling back to structured planner: %s", e)
-
-        # Deterministic fallback response
+    def _build_offline_fallback(self, msg: str, url: str | None, mode: str) -> ConversationalPlanResult:
+        """Deterministic fallback when no API key is available or during disconnected testing."""
         target_url = url or "https://www.google.com"
         sources = [
             DiscoveredSource(
                 url=target_url,
-                title="Target Source",
-                confidence=0.85,
+                title="Discovered Source",
+                confidence=0.80,
                 official=True,
             )
         ]
+        rules = [{"type": "availability_changed", "field": "status", "value": "updated"}] if mode in (ConversationalIntent.WATCH, ConversationalIntent.ASK_AND_WATCH) else []
+        targets = [{"url": target_url, "target_type": "primary", "source_confidence": 0.80}] if mode in (ConversationalIntent.WATCH, ConversationalIntent.ASK_AND_WATCH) else []
         return ConversationalPlanResult(
             mode=mode,
-            content=f"Processed your request for: {msg}",
+            content=f"Evaluated request for: {msg}",
             sources=sources,
             watch_title=msg[:50],
-            watch_url=target_url,
+            watch_url=target_url if mode != ConversationalIntent.ASK else None,
+            rules=rules,
+            targets=targets,
         )

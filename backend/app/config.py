@@ -54,7 +54,7 @@ class Settings(BaseSettings):
         ),
     )
     gemini_model_name: str = Field(
-        default="gemini-3.1-flash-lite",
+        default="gemini-2.5-flash",
         validation_alias=AliasChoices("gemini_model_name", "gemini_model", "model_name"),
     )
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
@@ -85,7 +85,7 @@ class Settings(BaseSettings):
         return value
 
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=(".env", "backend/.env"), extra="ignore")
 
 
 @lru_cache
