@@ -13,7 +13,8 @@ from app.schemas import DiscoveredSource
 @pytest.fixture(autouse=True)
 def mock_gemini_grounding(monkeypatch):
     """Mock external Google Gemini Search Grounding API call for unit tests to prevent quota exhaustion."""
-    def fake_discovery(self, message, raw_input, explicit_url, intended_mode, selected_option):
+    def fake_route(self, *, message, url=None, selected_option=None, history=None):
+        raw_input = message
         msg_lower = raw_input.lower()
         if "bau" in msg_lower and not selected_option:
             return ConversationalPlanResult(
@@ -25,6 +26,13 @@ def mock_gemini_grounding(monkeypatch):
                     "Beirut Arab University (BAU) in Lebanon",
                 ],
             )
+
+        if any(k in msg_lower for k in ["scholarship", "applications open"]):
+            intended_mode = ConversationalIntent.ASK_AND_WATCH
+        elif any(k in msg_lower for k in ["watch", "monitor", "track", "new jobs"]):
+            intended_mode = ConversationalIntent.WATCH
+        else:
+            intended_mode = ConversationalIntent.ASK
 
         if "bahçeşehir" in msg_lower or "bau" in msg_lower:
             sources = [
@@ -75,8 +83,8 @@ def mock_gemini_grounding(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "app.services.conversational_planner.ConversationalDiscoveryEngine._call_gemini_grounded_discovery",
-        fake_discovery,
+        "app.integrations.ai.router.AIRouter.route_conversational_turn",
+        fake_route,
     )
 
 

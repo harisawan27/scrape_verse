@@ -42,7 +42,33 @@ class Settings(BaseSettings):
     bright_data_poll_timeout_seconds: float = 60.0
     bright_data_poll_interval_seconds: float = 2.0
 
-    # Gemini LLM Planner Configuration
+    # Groq AI Configuration (Default Provider for general LLM work, classification, reasoning, and Watch Chat)
+    groq_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("groq_api_key", "groq_key"),
+    )
+    groq_default_model: str = Field(
+        default="openai/gpt-oss-120b",
+        validation_alias=AliasChoices("groq_default_model", "groq_model"),
+    )
+    groq_reasoning_model: str = Field(
+        default="openai/gpt-oss-120b",
+        validation_alias=AliasChoices("groq_reasoning_model", "groq_fast_model"),
+    )
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+
+    # OpenRouter + Gemini Configuration (Used ONLY for fresh web search discovery)
+    openrouter_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("openrouter_api_key", "openrouter_key"),
+    )
+    openrouter_search_model: str = Field(
+        default="google/gemini-2.5-flash",
+        validation_alias=AliasChoices("openrouter_search_model", "openrouter_model"),
+    )
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+
+    # Legacy/Direct Gemini LLM Planner Configuration (Backwards compatibility)
     gemini_api_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices(
