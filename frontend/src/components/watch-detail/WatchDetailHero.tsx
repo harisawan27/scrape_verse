@@ -169,19 +169,38 @@ export function WatchDetailHero({
       {/* Hero Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Latest Price Card */}
-        <div className="p-4 rounded-2xl bg-space-950/80 border border-space-750/80">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-            Current Monitored Value
-          </span>
-          <div className="text-2xl font-black text-white font-mono">
-            {hasPrice
-              ? formatCurrency(latest_value!.price, latest_value!.currency || "PKR")
-              : (
-                <span className="text-sm font-medium text-radar-cyan animate-pulse">
-                  First scan in progress...
+        <div className="p-4 rounded-2xl bg-space-950/80 border border-space-750/80 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between gap-1 mb-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                Current Monitored Value
+              </span>
+              {latest_value?.original_price && latest_value.price && latest_value.original_price > latest_value.price && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono">
+                  {Math.round(((latest_value.original_price - latest_value.price) / latest_value.original_price) * 100)}% off
                 </span>
               )}
+            </div>
+
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <div className="text-2xl font-black text-white font-mono">
+                {hasPrice
+                  ? formatCurrency(latest_value!.price, latest_value!.currency || "PKR")
+                  : (
+                    <span className="text-sm font-medium text-radar-cyan animate-pulse">
+                      First scan in progress...
+                    </span>
+                  )}
+              </div>
+
+              {latest_value?.original_price && latest_value.price && latest_value.original_price > latest_value.price && (
+                <span className="text-xs text-slate-500 line-through font-mono">
+                  {formatCurrency(latest_value.original_price, latest_value.currency || "PKR")}
+                </span>
+              )}
+            </div>
           </div>
+
           <span className="text-[11px] text-slate-400 mt-1 block font-mono">
             {latest_value?.captured_at
               ? `Captured ${formatRelativeTime(latest_value.captured_at)}`

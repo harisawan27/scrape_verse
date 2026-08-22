@@ -228,6 +228,8 @@ class WatchCreateFromPlanRequest(BaseModel):
 
 class ProductCurrentValue(BaseModel):
     price: float | None = None
+    original_price: float | None = None
+    on_sale: bool = False
     currency: str | None = None
     availability: str | None = None
     title: str | None = None

@@ -84,6 +84,18 @@ def extract_product_current_value(snapshot: Snapshot | None) -> ProductCurrentVa
         except (ValueError, TypeError):
             price = None
 
+    original_price = None
+    raw_orig = payload.get("original_price")
+    if raw_orig is not None:
+        try:
+            original_price = float(raw_orig)
+        except (ValueError, TypeError):
+            original_price = None
+
+    on_sale = bool(payload.get("on_sale", False))
+    if original_price is not None and price is not None and original_price > price:
+        on_sale = True
+
     rating = None
     raw_rating = payload.get("rating")
     if raw_rating is not None:
@@ -102,6 +114,8 @@ def extract_product_current_value(snapshot: Snapshot | None) -> ProductCurrentVa
 
     return ProductCurrentValue(
         price=price,
+        original_price=original_price,
+        on_sale=on_sale,
         currency=payload.get("currency") or "PKR",
         availability=payload.get("availability"),
         title=payload.get("title"),

@@ -2,6 +2,8 @@ export type HealthStatus = "healthy" | "running" | "repairing" | "failed" | "pau
 
 export interface ProductCurrentValue {
   price: number | null;
+  original_price?: number | null;
+  on_sale?: boolean | null;
   currency: string | null;
   availability: string | null;
   seller?: string | null;

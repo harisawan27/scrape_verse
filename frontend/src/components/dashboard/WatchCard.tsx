@@ -80,21 +80,35 @@ export function WatchCard({ watch, onRefresh }: WatchCardProps) {
         <div className="p-3.5 rounded-2xl bg-space-950/80 border border-space-750/80">
           <div className="flex items-baseline justify-between gap-2">
             <div>
-              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-0.5">
-                Current Monitored Value
-              </span>
-              <span className="text-xl font-black text-white tracking-tight font-mono">
-                {hasPrice
-                  ? formatCurrency(
-                      watch.latest_value!.price,
-                      watch.latest_value!.currency || "PKR"
-                    )
-                  : (
-                    <span className="text-sm font-medium text-radar-cyan animate-pulse">
-                      First scan in progress...
-                    </span>
-                  )}
-              </span>
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
+                  Current Monitored Value
+                </span>
+                {watch.latest_value?.original_price && watch.latest_value.price && watch.latest_value.original_price > watch.latest_value.price && (
+                  <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono">
+                    {Math.round(((watch.latest_value.original_price - watch.latest_value.price) / watch.latest_value.original_price) * 100)}% off
+                  </span>
+                )}
+              </div>
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span className="text-xl font-black text-white tracking-tight font-mono">
+                  {hasPrice
+                    ? formatCurrency(
+                        watch.latest_value!.price,
+                        watch.latest_value!.currency || "PKR"
+                      )
+                    : (
+                      <span className="text-sm font-medium text-radar-cyan animate-pulse">
+                        First scan in progress...
+                      </span>
+                    )}
+                </span>
+                {watch.latest_value?.original_price && watch.latest_value.price && watch.latest_value.original_price > watch.latest_value.price && (
+                  <span className="text-[11px] text-slate-500 line-through font-mono">
+                    {formatCurrency(watch.latest_value.original_price, watch.latest_value.currency || "PKR")}
+                  </span>
+                )}
+              </div>
             </div>
 
             {watch.latest_value?.availability && (
